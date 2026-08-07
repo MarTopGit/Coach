@@ -673,8 +673,7 @@ function orbitLoop(nowT){
   if(allIn && bestId && bestId!==frontId){
     frontId=bestId;
     const fn=document.getElementById("frontname");
-    if(fn){ fn.style.opacity="0";
-      setTimeout(()=>{ fn.textContent=COACHES[frontId].name+" · "+COACHES[frontId].role; fn.style.opacity="1"; },220); }
+    if(fn){ fn.textContent=COACHES[frontId].name+" · "+COACHES[frontId].role; fn.style.opacity="1"; }
   }
   requestAnimationFrame(orbitLoop);
 }
@@ -1067,9 +1066,9 @@ const _sb=document.getElementById("startbtn"); if(_sb) _sb.onclick=()=>openCall(
 (function(){
   const ow=document.getElementById("orbitwrap"); if(!ow) return;
   ow.addEventListener("pointerdown",e=>{ _dragLast=e.clientX; _dragMoved=0; });
-  window.addEventListener("pointermove",e=>{ if(_dragLast!=null){ const dx=e.clientX-_dragLast; dragSpin+=dx*0.007; _dragMoved+=Math.abs(dx); _dragLast=e.clientX; } });
+  window.addEventListener("pointermove",e=>{ if(_dragLast!=null){ const dx=e.clientX-_dragLast; dragSpin-=dx*0.007; _dragMoved+=Math.abs(dx); _dragLast=e.clientX; } });
   window.addEventListener("pointerup",()=>{ _dragLast=null; });
-  window.addEventListener("mousemove",e=>{ mouseSpinT=(e.clientX/window.innerWidth-0.5)*1.3; });
+  window.addEventListener("mousemove",e=>{ mouseSpinT=-(e.clientX/window.innerWidth-0.5)*1.3; });
 })();
 runFX("home");
 
