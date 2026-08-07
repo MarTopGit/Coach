@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f5f5f7">
+<title>Mein Team</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  --bg:#f5f5f7; --panel:#ffffff; --panel2:rgba(0,0,0,.05);
+  --line:rgba(0,0,0,.06); --line2:rgba(0,0,0,.11); --soft:0 6px 26px rgba(0,0,0,.06);
+  --text:#1d1d1f; --text2:#6e6e73; --text3:#a1a1a6;
+  --good:#248a3d; --warn:#c77400; --blue:#0071e3;
+  --serif:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{background:var(--bg);scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--text); min-height:100vh;
+  padding-top:max(env(safe-area-inset-top), 10px); overflow-x:hidden;
+}
+::-webkit-scrollbar{display:none}
+#gl{position:fixed;inset:0;z-index:0;pointer-events:none;width:100vw;height:100vh}
+#bg-aura{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.7;
+  background:radial-gradient(640px 480px at 50% 28%, rgba(139,127,240,.09), transparent 65%),radial-gradient(520px 420px at -6% 80%, rgba(63,214,173,.06), transparent 60%)}
+#app{max-width:480px;margin:0 auto;position:relative;z-index:1;
+  padding:8px 20px calc(110px + env(safe-area-inset-bottom))}
+@media(min-width:900px){#app{max-width:520px}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.kicker{font-size:11px;letter-spacing:.22em;color:var(--text3);font-weight:600;text-transform:uppercase}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.vtoggle{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text2);
+  background:rgba(255,255,255,.72);box-shadow:var(--soft);border:1px solid var(--line);border-radius:99px;padding:7px 13px;cursor:pointer;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.vtoggle .vdot{width:7px;height:7px;border-radius:50%;background:var(--good);transition:background .2s}
+.vtoggle.off .vdot{background:var(--text3)}
+h1{font-family:var(--serif);font-weight:600;font-size:30px;
+  letter-spacing:-.015em;text-align:center;margin:8px 0 0;line-height:1.12}
+.glass{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:var(--soft)}
+.orb{border-radius:50%;position:relative;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-weight:700;color:#fff;overflow:hidden}
+.orb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%}
+.orb::after{content:"";position:absolute;inset:0;border-radius:50%;z-index:2;
+  background:radial-gradient(circle at 32% 26%, rgba(255,255,255,.32), rgba(255,255,255,0) 45%)}
+.orb .ring{position:absolute;inset:0;border-radius:50%;z-index:3;border:.5px solid rgba(0,0,0,.10)}
+.hasimg .sheen{display:none}
+.hasimg::after{display:none}
+.hasimg .ring{display:none}
+.hasimg{box-shadow:0 10px 26px rgba(0,0,0,.14)!important}
+#orbitwrap{position:relative;width:330px;height:300px;margin:10px auto 0;flex-shrink:0;transform-origin:center top}
+#orbitsvg{position:absolute;inset:0}
+.oorb{position:absolute;width:76px;height:76px;font-size:23px;cursor:pointer;will-change:transform,opacity}
+.sheen{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+#voicering{position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(0,0,0,.2);
+  opacity:0;pointer-events:none;transition:opacity .15s;z-index:1}
+#call.live .ringp{display:none}
+.oorb.pinging{animation:opulse 1.3s ease-in-out infinite}
+@keyframes opulse{0%,100%{box-shadow:0 0 16px var(--pc,#f06a9e)33}50%{box-shadow:0 0 44px var(--pc,#f06a9e)}}
+#centerorb{position:absolute;left:126px;top:112px;width:78px;height:78px;font-size:26px;cursor:pointer;transition:box-shadow .5s}
+#frontname{text-align:center;font-size:12px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;
+  font-weight:600;height:16px;transition:opacity .4s;margin-top:2px}
+#orbitmsg{text-align:center;font-size:14px;color:var(--text2);line-height:1.6;min-height:56px;
+  padding:10px 16px 0;cursor:pointer;animation:fade .5s}
+#orbitmsg b{color:var(--text);font-weight:600}
+#orbitmsg .from{font-size:10.5px;font-weight:700;letter-spacing:.16em;display:block;margin-bottom:4px}
+.view{display:none}
+.view.active{display:block;animation:fade .3s ease}
+.sec{margin-top:34px}
+.fx{opacity:0;transition:opacity .65s cubic-bezier(.22,1,.36,1),transform .65s cubic-bezier(.22,1,.36,1);transition-delay:var(--d,0s)}
+.fx-up{transform:translateY(28px)}
+.fx-left{transform:translateX(-48px)}
+.fx-right{transform:translateX(48px)}
+.fx-pop{transform:scale(.55)}
+.fx.in{opacity:1;transform:none}
+.statrow{display:flex;justify-content:space-around;text-align:center;margin-top:26px}
+.stat .sv{font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat .sl{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-top:2px}
+.teaser{display:flex;align-items:center;gap:12px;cursor:pointer}
+.trow{display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.trow:last-child{border:none}
+.trow .orb{width:54px;height:54px;font-size:17px}
+.trow .tn{font-size:15.5px;font-weight:600}
+.trow .tr{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);font-weight:700}
+.trow .tm{font-size:12.5px;color:var(--text2);line-height:1.45;margin-top:2px}
+.carousel{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding:10px 4px 6px;margin:0 -20px;
+  padding-left:20px;padding-right:20px;-webkit-overflow-scrolling:touch}
+.ccard{scroll-snap-align:center;flex:0 0 85%;background:#fff;border-radius:26px;border:1px solid var(--line);
+  box-shadow:var(--soft);overflow:hidden;transition:transform .35s cubic-bezier(.22,1,.36,1)}
+.ccard.dim{transform:scale(.94)}
+.ccard .photo{position:relative;height:300px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ccard .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center}
+.ccard .photo .bigini{font-size:96px;font-weight:800;color:rgba(255,255,255,.9)}
+.ccard .photo .scrim{position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,.55), rgba(0,0,0,0) 52%)}
+.ccard .photo .pname{position:absolute;left:18px;bottom:14px;color:#fff}
+.ccard .photo .pname .n{font-size:26px;font-weight:700;letter-spacing:-.015em;text-shadow:0 2px 10px rgba(0,0,0,.4)}
+.ccard .photo .rolepill{position:absolute;right:14px;top:14px;font-size:10.5px;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:#fff;padding:5px 11px;border-radius:99px}
+.ccard .cbody{padding:16px 18px 18px}
+.ccard .cm{font-size:13.5px;color:var(--text2);line-height:1.55}
+.ccard .cq{font-size:15px;font-weight:600;line-height:1.45;margin:12px 0;padding-left:12px;border-left:3px solid var(--line2)}
+.ccard .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.ccard .tag{font-size:11px;font-weight:600;padding:5px 11px;border-radius:99px;background:rgba(0,0,0,.045);color:var(--text2)}
+.ccard .acts{display:flex;gap:8px}
+.dots{display:flex;justify-content:center;gap:6px;margin-top:12px}
+.dots i{width:6px;height:6px;border-radius:50%;background:rgba(0,0,0,.15);transition:all .3s}
+.dots i.on{background:#1d1d1f;width:18px;border-radius:3px}
+.vs{display:flex;align-items:center;gap:10px;margin:6px 0 14px}
+.vscard{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:14px;box-shadow:var(--soft);text-align:center}
+.vscard .orb{width:76px;height:76px;font-size:22px;margin:0 auto 8px}
+.vscard .vq{font-size:13.5px;font-weight:600;line-height:1.4}
+.vscard .vn{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-top:5px}
+.vsbadge{width:40px;height:40px;border-radius:50%;background:#1d1d1f;color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;flex-shrink:0;box-shadow:0 8px 22px rgba(0,0,0,.18)}
+.tlwrap{position:relative}
+.tlline{position:absolute;left:6.5px;top:8px;width:1.5px;background:var(--line2);height:0;transition:height 1.1s cubic-bezier(.22,1,.36,1) .15s}
+.view.active .tlline.in{height:calc(100% - 16px)}
+.tl2{position:relative;padding-left:24px}
+.bars{display:none;gap:7px;align-items:flex-end;height:64px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.metric.open .bars{display:flex}
+.bars i{flex:1;border-radius:5px 5px 2px 2px;background:var(--warn);height:4px;transition:height .6s cubic-bezier(.22,1,.36,1)}
+.bars i.g{background:var(--good)}
+.metric{cursor:pointer;transition:transform .2s}
+.metric:active{transform:scale(.98)}
+.pickrow{display:flex;justify-content:space-between;gap:6px;margin:4px 0 14px}
+.pick{display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;flex:1;
+  transition:transform .25s cubic-bezier(.34,1.5,.64,1)}
+.pick .orb{width:57px;height:57px;font-size:17px;transition:all .25s;position:relative}
+.pick .pn{font-size:10px;font-weight:600;color:var(--text3)}
+.pick:not(.sel){filter:grayscale(1);opacity:.42}
+.pick:not(.sel) .orb{box-shadow:none!important}
+.pick.sel{transform:translateY(-3px)}
+.pick .chk{position:absolute;right:-3px;bottom:-3px;width:17px;height:17px;border-radius:50%;
+  background:var(--blue);color:#fff;font-size:10px;display:none;align-items:center;justify-content:center;
+  border:2px solid #f5f5f7;z-index:4}
+.pick.sel .chk{display:flex;animation:rise .25s ease}
+.sectitle{font-family:var(--serif);font-weight:600;font-size:22px;letter-spacing:-.012em;margin-bottom:2px}
+.secsub{font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
+.reveal.inview{opacity:1;transform:none}
+h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-transform:uppercase;margin:20px 0 10px}
+.tl{position:relative;padding-left:24px}
+.tl::before{content:"";position:absolute;left:6.5px;top:8px;bottom:8px;width:1px;background:var(--line2)}
+.tlitem{position:relative;padding:9px 0}
+.tlitem .tdot{position:absolute;left:-24px;top:14px;width:13px;height:13px;border-radius:50%;border:2.5px solid #fff}
+.tlitem .ttime{font-size:11.5px;font-weight:700;color:var(--text3);font-variant-numeric:tabular-nums}
+.tlitem .ttitle{font-size:15px;font-weight:600;margin-top:1px}
+.tlitem .tsub{font-size:12.5px;color:var(--text2);margin-top:1px}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px;box-shadow:var(--soft)}
+.metric .mlabel{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--text3)}
+.metric .mval{font-size:19px;font-weight:700;margin-top:6px}
+.metric .msub{font-size:12px;color:var(--text2);margin-top:2px;line-height:1.45}
+.feed-item{display:flex;gap:12px;align-items:center;background:var(--panel);box-shadow:var(--soft);border:1px solid var(--line);
+  border-radius:16px;padding:12px 14px;margin-bottom:9px;cursor:pointer;animation:rise .4s ease}
+.feed-item .orb{width:48px;height:48px;font-size:15px}
+.feed-item .fi-t{font-size:13.5px;font-weight:600}
+.feed-item .fi-b{font-size:12.5px;color:var(--text2);line-height:1.45}
+.feed-item .fi-time{font-size:11px;color:var(--text3);margin-top:2px}
+.logrow{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);font-size:13.5px;line-height:1.5}
+.logrow:last-child{border:none}
+.logrow .lr-ico{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:14px;flex-shrink:0;background:var(--panel2)}
+.logrow .lr-t{color:var(--text3);font-size:11.5px;margin-top:2px}
+.hint{font-size:12.5px;color:var(--text2);line-height:1.6;background:var(--panel);border:1px solid var(--line);
+  border-radius:16px;padding:12px 14px;margin-top:12px;box-shadow:var(--soft)}
+.quiet{display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--text3);margin-top:40px}
+#pills{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:0;right:0;z-index:40;display:flex;justify-content:center;pointer-events:none}
+#pills .inner{pointer-events:auto;display:flex;gap:4px;background:rgba(255,255,255,.72);box-shadow:var(--soft);
+  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+  border:1px solid var(--line2);border-radius:99px;padding:5px}
+.pillbtn{padding:11px 14px;border-radius:99px;font-size:13px;font-weight:600;color:var(--text2);
+  cursor:pointer;border:none;background:none;transition:all .2s}
+.pillbtn:active{background:rgba(0,0,0,.06);color:var(--text)}
+.pillbtn.tabactive{background:#1d1d1f;color:#fff}
+#call{position:fixed;inset:0;z-index:60;display:none;flex-direction:column;background:var(--bg);overflow:hidden}
+#call.open{display:flex;animation:callin .5s cubic-bezier(.22,1,.36,1)}
+@keyframes callin{from{opacity:0;transform:translateY(24px) scale(.985)}to{opacity:1;transform:none}}
+#call-aura{position:absolute;inset:0;pointer-events:none;transition:background 1.2s ease;opacity:.95}
+#call .chead{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;
+  padding:calc(14px + env(safe-area-inset-top)) 18px 8px}
+#call .cclose{background:rgba(0,0,0,.05);border:none;border-radius:50%;width:36px;height:36px;
+  color:var(--text2);font-size:15px;cursor:pointer}
+#teamrow{position:relative;z-index:2;display:none;justify-content:center;gap:10px;padding:6px 0 0}
+#teamrow .orb{width:46px;height:46px;font-size:14px;opacity:.3;transition:all .4s ease;cursor:default}
+#teamrow .orb.activeSpk{opacity:1;transform:scale(1.24);box-shadow:0 0 26px var(--spk,rgba(0,0,0,.15))}
+#callcenter{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;padding-top:2.5vh;flex-shrink:0}
+#bigorbwrap{position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center}
+#bigorb{width:156px;height:156px;font-size:54px;transition:background .5s ease,box-shadow .5s ease;z-index:2}
+.ringp{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--ring,rgba(0,0,0,.2));opacity:0;z-index:1}
+#call.speaking .ringp{animation:ringpulse 1.6s ease-out infinite}
+#call.speaking .ringp.r2{animation-delay:.55s}
+#call.speaking .ringp.r3{animation-delay:1.1s}
+@keyframes ringpulse{0%{transform:scale(.82);opacity:.55}100%{transform:scale(1.45);opacity:0}}
+#cname{font-family:var(--serif);font-weight:600;font-size:26px;letter-spacing:-.015em;margin-top:14px;transition:opacity .3s}
+#crole{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:600;margin-top:4px}
+#cstate{font-size:12px;color:var(--text3);margin-top:8px;height:16px;display:flex;align-items:center;gap:6px}
+.eq{display:inline-flex;gap:2.5px;align-items:flex-end;height:12px}
+.eq i{width:3px;border-radius:2px;background:var(--good);animation:eqb 1s ease-in-out infinite}
+.eq i:nth-child(1){height:6px}.eq i:nth-child(2){height:11px;animation-delay:.15s}
+.eq i:nth-child(3){height:8px;animation-delay:.3s}.eq i:nth-child(4){height:11px;animation-delay:.45s}
+@keyframes eqb{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+#transcript{position:relative;z-index:2;flex:1;overflow-y:auto;padding:22px 28px 12px;display:flex;flex-direction:column;gap:16px}
+.tline{font-size:20.5px;line-height:1.5;font-weight:500;letter-spacing:-.005em;max-width:560px}
+.tline .w{opacity:0;transition:opacity .2s ease}
+.tline .w.on{opacity:1}
+.tline.old{font-size:14px;color:var(--text3);font-weight:400}
+.tline .twho{display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:5px}
+.tme{align-self:flex-end;background:var(--blue);color:#fff;border:none;
+  border-radius:18px;border-bottom-right-radius:6px;padding:9px 15px;font-size:14.5px;animation:fade .3s}
+.tsys{align-self:center;font-size:11px;letter-spacing:.06em;color:var(--text3);background:rgba(0,0,0,.04);
+  border:1px solid var(--line);padding:5px 13px;border-radius:99px;animation:fade .4s;text-align:center}
+#chips{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:9px;justify-content:center;
+  padding:12px 18px calc(20px + env(safe-area-inset-bottom))}
+.chip{background:#ffffff;border:1px solid var(--line2);color:var(--text);box-shadow:var(--soft);
+  border-radius:99px;padding:11px 19px;font-size:14.5px;font-weight:600;cursor:pointer;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:rise .35s ease;transition:transform .12s}
+.chip:active{transform:scale(.95);background:#f0f0f2}
+.chip.action{border-color:var(--blue);color:var(--blue)}
+#toast{position:fixed;top:calc(10px + env(safe-area-inset-top));left:14px;right:14px;z-index:80;max-width:470px;margin:0 auto;
+  transform:translateY(-140%);transition:transform .45s cubic-bezier(.22,1.3,.36,1)}
+#toast.show{transform:none}
+#toast .t-inner{display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.86);
+  backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);border:1px solid var(--line2);
+  border-radius:20px;padding:13px 15px;cursor:pointer;box-shadow:0 12px 40px rgba(0,0,0,.14)}
+#toast .orb{width:48px;height:48px;font-size:16px}
+#toast .t-title{font-size:13px;font-weight:700}
+#toast .t-body{font-size:12.5px;color:var(--text2)}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="bg-aura"></div>
+<div id="app">
+  <div class="view active" id="view-home">
+    <div class="topbar">
+      <div class="kicker" id="datum">Heute</div>
+      <div style="display:flex;gap:8px">
+        <div class="vtoggle" id="vtoggle" role="button" aria-label="Stimmen an/aus"><span class="vdot"></span><span id="vlabel">Stimmen an</span></div>
+        <div class="vtoggle" id="settingsbtn" role="button" aria-label="Stimmen-Einstellungen">⚙︎</div>
+      </div>
+    </div>
+    <h1 id="greeting">Guten Morgen, Marco</h1>
+
+    <div id="orbitwrap">
+      <svg id="orbitsvg" width="330" height="300" viewBox="0 0 330 300">
+        <ellipse cx="165" cy="151" rx="128" ry="52" fill="none" stroke="rgba(0,0,0,.09)" stroke-dasharray="2 7"/>
+        <circle cx="165" cy="151" r="52" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="4.5"/>
+        <circle id="recarc" cx="165" cy="151" r="52" fill="none" stroke="#f0a83c" stroke-width="4.5" stroke-linecap="round"
+          stroke-dasharray="0 327" transform="rotate(-90 165 151)" opacity=".9"/>
+      </svg>
+      <div class="orb" id="centerorb">M</div>
+      <div id="orbs"></div>
+    </div>
+    <div id="frontname"></div>
+    <div id="orbitmsg"></div>
+
+    <div class="sec">
+      <div class="glass fx fx-up" style="--d:.3s">
+        <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:5px">Neu hier</div>
+        <div style="font-size:17px;font-weight:600;margin-bottom:6px">Dein Team lernt dich gerade kennen.</div>
+        <div style="font-size:13.5px;color:var(--text2);line-height:1.55;margin-bottom:14px">Sechs Coaches, ehrlich neugierig auf dich. Je mehr sie über dich wissen, desto besser wird dein Coaching. Fang mit irgendeinem an — sie fragen von selbst.</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="chip action" id="startbtn" style="flex:1">Mit dem Team starten</button>
+          <div id="memcount" style="font-size:12px;color:var(--text3);font-weight:600;white-space:nowrap">0 gemerkt</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-coaches">
+    <div class="sectitle" style="margin-top:6px">Dein Staff</div>
+    <div class="secsub">Sechs Profis. Ein Athlet: du. Blättere durch dein Team.</div>
+    <div class="carousel fx fx-up" style="--d:.1s" id="coachcarousel"></div>
+    <div class="dots" id="coachdots"></div>
+  </div>
+
+  <div class="view" id="view-runde">
+    <div class="sectitle" style="margin-top:6px">Team-Runde</div>
+    <div class="secsub">Zwei Meinungen. Eine Empfehlung. Dein Wort.</div>
+
+    <h2 class="fx fx-up">So sieht eine Team-Runde aus · Beispiel</h2>
+    <div class="vs">
+      <div class="vscard fx fx-left" style="--d:.1s">
+        <div class="orb" id="vsviktor"></div>
+        <div class="vq">„Momentum nutzen. Intensivieren.“</div>
+        <div class="vn">Viktor</div>
+      </div>
+      <div class="vsbadge fx fx-pop" style="--d:.4s">VS</div>
+      <div class="vscard fx fx-right" style="--d:.1s">
+        <div class="orb" id="vsmara"></div>
+        <div class="vq">„Erst erholen. Sonntag bleibt frei.“</div>
+        <div class="vn">Mara</div>
+      </div>
+    </div>
+
+    <div class="glass fx fx-up" style="--d:.5s;padding:16px">
+      <div id="lobbysummary" style="display:none;font-size:13.5px;color:var(--text2);line-height:1.6;
+        border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px">
+        Viktor will intensivieren (Kraftwerte steigen seit 6 Wochen), Mara bremst (Recovery 64 %, Schlaf kurz).
+        Deniz bestätigt beides. <b style="color:var(--text)">Kompromiss:</b> 3 Einheiten, eine intensiv —
+        nur bei Recovery über 70 % · Sonntag frei.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="chip action" id="lobbyplay" style="flex:1">▶ Anhören & entscheiden</button>
+        <button class="chip" id="lobbyread">Kurzfassung</button>
+      </div>
+    </div>
+
+    <h2 class="fx fx-up" style="--d:.55s">Sitzung einberufen</h2>
+    <div class="secsub fx fx-up" style="--d:.6s;margin-bottom:8px">Wähle, wer am Tisch sitzt — dann dein Thema.</div>
+    <div class="pickrow fx fx-up" style="--d:.65s" id="pickrow"></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <button class="chip fx fx-up" style="--d:.72s" id="topic-marathon">🏃 „Marathon im Herbst?“</button>
+      <button class="chip fx fx-up" style="--d:.79s" id="topic-energy">⚡ „Mehr Energie nachmittags“</button>
+      <button class="chip fx fx-up" style="--d:.86s" id="topic-own">＋ Eigenes Thema</button>
+    </div>
+    <div id="topichint" style="display:none;font-size:12px;color:var(--text3);margin-top:8px">
+      Freie Themen beantwortet dein Team, sobald die Coaches echt denken (nächste Etappe).
+    </div>
+
+    <h2 class="fx fx-up" style="--d:.85s">Frühere Runden</h2>
+    <div class="glass fx fx-up" style="--d:.9s;padding:6px 16px" id="rundenarchiv"></div>
+  </div>
+
+  <div class="view" id="view-tag">
+    <div class="sectitle" style="margin-top:6px">Dein Tag</div>
+    <div class="secsub">Sobald Whoop, Kalender und deine Gym-App verbunden sind, lebt dieser Bereich.</div>
+    <div class="metrics">
+      <div class="metric fx fx-left" style="--d:.05s;cursor:default">
+        <div class="mlabel">Whoop</div>
+        <div class="mval" style="color:var(--text3)">Nicht verbunden</div>
+        <div class="msub">Recovery, Schlaf, HRV — folgt.</div>
+      </div>
+      <div class="metric fx fx-right" style="--d:.05s;cursor:default">
+        <div class="mlabel">Training</div>
+        <div class="mval" style="color:var(--text3)">Noch nichts</div>
+        <div class="msub">Deine Gym-App — folgt.</div>
+      </div>
+    </div>
+    <h2 class="fx fx-up" style="--d:.3s">Plan</h2>
+    <div class="glass fx fx-up" style="--d:.35s">
+      <div class="tlwrap"><div class="tlline" id="tlline"></div><div class="tl2" id="tagtl"></div></div>
+    </div>
+    <h2 class="fx fx-up" style="--d:.45s">Team-Feed</h2>
+    <div id="tagfeed"></div>
+  </div>
+
+  <div class="view" id="view-log">
+    <div class="sectitle" style="margin-top:6px">Logbuch</div>
+    <div class="secsub">Jede Aktion deines Teams — sichtbar, widerrufbar.</div>
+    <div class="glass fx fx-up" style="--d:.05s;padding:6px 16px" id="actionlog"></div>
+    <h2 class="fx fx-up" style="--d:.35s">Spielregeln</h2>
+    <div class="glass fx fx-up" style="--d:.4s;font-size:13px;line-height:1.6;color:var(--text2)">
+      Kleines erledigt dein Team selbst. Alles Spürbare kommt als Vorschlag — du bestätigst mit einem Tipp.
+      Immer widerrufbar, immer hier dokumentiert.
+    </div>
+    <div class="hint fx fx-up" style="--d:.45s"><b>Aufs iPhone:</b> Safari → Teilen → „Zum Home-Bildschirm“. <b>Am Mac:</b> Safari → Ablage → „Zum Dock hinzufügen“.</div>
+    <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
+  </div>
+
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 22</div>
+</div>
+
+<div id="pills"><div class="inner">
+  <button class="pillbtn tabactive" data-v="home">Heute</button>
+  <button class="pillbtn" data-v="coaches">Coaches</button>
+  <button class="pillbtn" data-v="runde">Runde</button>
+  <button class="pillbtn" data-v="tag">Tag</button>
+  <button class="pillbtn" data-v="log">Log</button>
+</div></div>
+
+<div id="call">
+  <div id="call-aura"></div>
+  <div class="chead">
+    <div class="vtoggle" id="vtoggle2" role="button"><span class="vdot"></span><span>Stimme</span></div>
+    <div style="display:flex;gap:8px">
+      <button class="cclose" id="pausebtn" aria-label="Pause">❚❚</button>
+      <button class="cclose" onclick="closeCall()">✕</button>
+    </div>
+  </div>
+  <div id="teamrow"></div>
+  <div id="callcenter">
+    <div id="bigorbwrap">
+      <div class="ringp r1"></div><div class="ringp r2"></div><div class="ringp r3"></div>
+      <div id="voicering"></div>
+      <div class="orb" id="bigorb"></div>
+    </div>
+    <div id="cname"></div>
+    <div id="crole"></div>
+    <div id="cstate"></div>
+  </div>
+  <div id="transcript"></div>
+  <div id="chips"></div>
+  <div id="chatbar" style="display:none;position:relative;z-index:2;gap:8px;padding:10px 16px calc(16px + env(safe-area-inset-bottom));align-items:center">
+    <input id="chatinput" placeholder="Schreib oder sprich (🎤 auf der Tastatur)…" autocomplete="off"
+      style="flex:1;background:#fff;border:1px solid var(--line2);border-radius:99px;padding:12px 16px;font-size:15px;color:var(--text);box-shadow:var(--soft)">
+    <button id="chatsend" aria-label="Senden"
+      style="width:44px;height:44px;border-radius:50%;border:none;background:var(--blue);color:#fff;font-size:17px;cursor:pointer;flex-shrink:0">➤</button>
+  </div>
+</div>
+
+<div id="settings" style="position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.22)">
+  <div class="glass" style="width:min(92vw,380px);padding:22px;background:rgba(255,255,255,.95);backdrop-filter:blur(20px)">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Studio-Stimmen</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
+      Mit einem ElevenLabs-API-Key sprechen deine Coaches mit echten, menschlichen Stimmen.
+      Key erstellen auf elevenlabs.io → Profil → API Keys. Der Key bleibt nur auf diesem Gerät.
+    </div>
+    <input id="elkeyinput" type="password" placeholder="ElevenLabs API-Key einfügen" autocomplete="off"
+      style="width:100%;background:rgba(0,0,0,.04);border:1px solid var(--line2);border-radius:12px;
+      padding:12px 14px;color:var(--text);font-size:14px;margin-bottom:8px">
+    <div id="elstatus" style="font-size:12px;color:var(--text3);margin-bottom:14px;min-height:15px"></div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      <button class="chip action" id="elsave" style="flex:1">Speichern</button>
+      <button class="chip" id="eltest">Stimme testen</button>
+      <button class="chip" id="elremove">Entfernen</button>
+    </div>
+
+    <div style="height:1px;background:var(--line);margin:18px 0"></div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Coach-Intelligenz</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:12px">
+      Mit einem Anthropic-API-Key denken deine Coaches wirklich — freie Gespräche statt fester Antworten.
+      Key auf console.anthropic.com → API Keys. Bleibt nur auf diesem Gerät.
+    </div>
+    <input id="anthkeyinput" type="password" placeholder="Anthropic API-Key (sk-ant-…)" autocomplete="off"
+      style="width:100%;background:rgba(0,0,0,.04);border:1px solid var(--line2);border-radius:12px;
+      padding:12px 14px;color:var(--text);font-size:14px;margin-bottom:8px">
+    <div id="anthstatus" style="font-size:12px;color:var(--text3);margin-bottom:14px;min-height:15px"></div>
+    <div style="display:flex;gap:9px;flex-wrap:wrap">
+      <button class="chip action" id="anthsave" style="flex:1">Speichern</button>
+      <button class="chip" id="anthtest">Verbindung testen</button>
+      <button class="chip" id="anthremove">Entfernen</button>
+    </div>
+
+    <div style="height:1px;background:var(--line);margin:18px 0"></div>
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Gedächtnis</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:10px">Was dein Team über dich weiß. Wächst mit euren Gesprächen. Bleibt nur auf diesem Gerät.</div>
+    <div id="memlist" style="max-height:160px;overflow-y:auto;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="chip" id="membackup">Sichern</button>
+      <button class="chip" id="memimport">Laden</button>
+      <button class="chip" id="memreset">Zurücksetzen</button>
+    </div>
+    <input id="memfile" type="file" accept="application/json,.json" style="display:none">
+    <div style="display:flex;justify-content:flex-end">
+      <button class="chip" id="elclose">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><div class="t-inner" id="toastinner"></div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
