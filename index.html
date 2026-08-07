@@ -73,6 +73,10 @@ h1{font-family:var(--serif);font-weight:600;font-size:30px;
 .view{display:none}
 .view.active{display:block;animation:fade .3s ease}
 .sec{margin-top:34px}
+#homehero{min-height:calc(100svh - 150px);display:flex;flex-direction:column;align-items:center;justify-content:center}
+#scrollcue{font-size:11px;letter-spacing:.14em;color:var(--text3);margin-top:20px;animation:cue 1.9s ease-in-out infinite}
+@keyframes cue{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(4px);opacity:1}}
+#orbitwrap{touch-action:pan-y}
 .fx{opacity:0;transition:opacity .65s cubic-bezier(.22,1,.36,1),transform .65s cubic-bezier(.22,1,.36,1);transition-delay:var(--d,0s)}
 .fx-up{transform:translateY(28px)}
 .fx-left{transform:translateX(-48px)}
@@ -246,19 +250,21 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
         <div class="vtoggle" id="settingsbtn" role="button" aria-label="Stimmen-Einstellungen">⚙︎</div>
       </div>
     </div>
-    <h1 id="greeting">Guten Morgen, Marco</h1>
-
-    <div id="orbitwrap">
-      <svg id="orbitsvg" width="330" height="300" viewBox="0 0 330 300">
-        <ellipse cx="165" cy="151" rx="128" ry="52" fill="none" stroke="rgba(0,0,0,.09)" stroke-dasharray="2 7"/>
-        <circle cx="165" cy="151" r="52" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="4.5"/>
-        <circle id="recarc" cx="165" cy="151" r="52" fill="none" stroke="#f0a83c" stroke-width="4.5" stroke-linecap="round"
-          stroke-dasharray="0 327" transform="rotate(-90 165 151)" opacity=".9"/>
-      </svg>
-      <div class="orb" id="centerorb">M</div>
-      <div id="orbs"></div>
+    <div id="homehero">
+      <h1 id="greeting">Guten Morgen, Marco</h1>
+      <div id="orbitwrap">
+        <svg id="orbitsvg" width="330" height="300" viewBox="0 0 330 300">
+          <ellipse cx="165" cy="151" rx="128" ry="52" fill="none" stroke="rgba(0,0,0,.09)" stroke-dasharray="2 7"/>
+          <circle cx="165" cy="151" r="52" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="4.5"/>
+          <circle id="recarc" cx="165" cy="151" r="52" fill="none" stroke="#f0a83c" stroke-width="4.5" stroke-linecap="round"
+            stroke-dasharray="0 327" transform="rotate(-90 165 151)" opacity=".9"/>
+        </svg>
+        <div class="orb" id="centerorb">M</div>
+        <div id="orbs"></div>
+      </div>
+      <div id="frontname"></div>
+      <div id="scrollcue">nach unten wischen ↓</div>
     </div>
-    <div id="frontname"></div>
     <div id="orbitmsg"></div>
 
     <div class="sec">
@@ -365,7 +371,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 22</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 23</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -406,8 +412,8 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
   </div>
 </div>
 
-<div id="settings" style="position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.22)">
-  <div class="glass" style="width:min(92vw,380px);padding:22px;background:rgba(255,255,255,.95);backdrop-filter:blur(20px)">
+<div id="settings" style="position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.22);padding:12px">
+  <div class="glass" style="width:min(94vw,380px);max-height:86svh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;background:rgba(255,255,255,.97);backdrop-filter:blur(20px)">
     <div style="font-size:17px;font-weight:700;margin-bottom:4px">Studio-Stimmen</div>
     <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
       Mit einem ElevenLabs-API-Key sprechen deine Coaches mit echten, menschlichen Stimmen.

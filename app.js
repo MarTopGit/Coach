@@ -288,7 +288,8 @@ function startParallax(){
     _px+=(_tx-_px)*.07; _py+=(_ty-_py)*.07;
     const ow=document.getElementById("orbitwrap");
     const sy=window.scrollY||0;
-    const shr=Math.max(.86,1-sy/1400), op=Math.max(.25,1-sy/700);
+    const base=Math.min(1.04,(Math.min(window.innerWidth,480)-16)/330);
+    const shr=base*Math.max(.62,1-sy/560), op=Math.max(.2,1-sy/520);
     if(ow){ ow.style.transform="translate("+_px.toFixed(2)+"px,"+_py.toFixed(2)+"px) scale("+shr.toFixed(3)+")";
       ow.style.opacity=op.toFixed(2); }
     const bg=document.getElementById("bg-aura");
@@ -485,10 +486,14 @@ function openCall(id){
   else { showNoKey(id); }
 }
 function showNoKey(id){
-  addMsg(id, "Ich wuerde dich wirklich gern kennenlernen — dafuer fehlt nur noch mein Zugang. Richte ihn kurz ein, dann bin ich fuer dich da.");
+  addMsg(id, "Ich würde dich wirklich gern kennenlernen — dafür fehlt nur noch mein Zugang: der Coach-Intelligenz-Key (Anthropic). Richte ihn kurz ein, dann bin ich für dich da.");
   const box=document.getElementById("chips"); box.innerHTML="";
-  const b=el('<button class="chip action">Verbindung einrichten</button>');
-  b.onclick=()=>{ closeCall(); const sb=document.getElementById("settingsbtn"); if(sb&&sb.onclick) sb.onclick(); };
+  const b=el('<button class="chip action">Coach-Intelligenz einrichten</button>');
+  b.onclick=()=>{ closeCall();
+    const sb=document.getElementById("settingsbtn"); if(sb&&sb.onclick) sb.onclick();
+    setTimeout(()=>{ const inp=document.getElementById("anthkeyinput");
+      if(inp){ try{ inp.scrollIntoView({block:"center"}); inp.focus(); }catch(e){} } }, 120);
+  };
   box.appendChild(b);
 }
 function setPaused(p){
@@ -602,6 +607,7 @@ function showChips(chips){
 
 /* ===== Orbit ===== */
 const OCX=165, OCY=151, ORX=128, ORY=52, OW=(2*Math.PI)/140000;
+let dragSpin=0, mouseSpin=0, mouseSpinT=0, _dragLast=null, _dragMoved=0;
 let orbEls=[], orbitT0=0, frontId="";
 const AVOK={};
 function avatarInner(id){ return AVOK[id] ? '<img src="avatars/'+id+'.png" alt="">' : COACHES[id].ini; }
@@ -647,12 +653,13 @@ function renderOrbit(){
 }
 function orbitLoop(nowT){
   const t=nowT-orbitT0;
+  mouseSpin+=(mouseSpinT-mouseSpin)*0.06;
   let bestZ=-2, bestId="", allIn=true;
   orbEls.forEach((o,i)=>{
     const pe=Math.min(1,Math.max(0,(t-160-i*95)/850));
     if(pe<1) allIn=false;
     const sp=pe<=0?0:easeOutBack(pe);
-    const ang=Math.PI/2+i*Math.PI/3+t*OW;
+    const ang=Math.PI/2+i*Math.PI/3+t*OW+dragSpin+mouseSpin;
     const z=Math.sin(ang), f=(z+1)/2;
     const x=OCX+Math.cos(ang)*ORX*sp, y=OCY+Math.sin(ang)*ORY*sp;
     const sc=(.72+.42*f)*(.3+.7*Math.min(1,pe*1.15));
@@ -672,6 +679,7 @@ function orbitLoop(nowT){
   requestAnimationFrame(orbitLoop);
 }
 function flyOpen(id, srcEl){
+  if(_dragMoved>8){ return; }
   if(!srcEl || !srcEl.getBoundingClientRect){ openCall(id); return; }
   const r=srcEl.getBoundingClientRect();
   if(!r.width){ openCall(id); return; }
@@ -903,19 +911,19 @@ function processReply(t){
   return { clean:clean||"…", facts };
 }
 function memoryBlock(){
-  if(!memFacts.length) return "Du kennst Marco noch gar nicht — dies ist einer eurer allerersten Momente. Sei aufrichtig neugierig: stelle ihm warme, offene Fragen ueber sein Leben, seine Ziele und was ihn bewegt — immer eine nach der anderen, nie wie ein Fragebogen. ";
-  return "Das weisst du bereits ueber Marco:\n- "+memFacts.join("\n- ")+"\nBeziehe dich natuerlich darauf und lerne behutsam mehr ueber ihn. ";
+  if(!memFacts.length) return "Du kennst Marco noch gar nicht — dies ist einer eurer allerersten Momente. Sei aufrichtig neugierig: stelle ihm warme, offene Fragen über sein Leben, seine Ziele und was ihn bewegt — immer eine nach der anderen, nie wie ein Fragebogen. ";
+  return "Das weißt du bereits über Marco:\n- "+memFacts.join("\n- ")+"\nBeziehe dich natürlich darauf und lerne behutsam mehr über ihn. ";
 }
 function systemPrompt(id){
   const c=COACHES[id];
   let p="Du bist "+c.name+", "+c.role+" in Marcos persoenlichem Coaching-Team, wie das Trainerteam eines Spitzensportlers. "+
     "Wesen: "+c.vibe+". Dein Auftrag: "+MISSIONS[id]+" Dein Leitsatz: "+QUOTES[id]+" "+
-    "Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespraech gesprochen: kurz, 2 bis 4 Saetze, keine Aufzaehlungen, keine Ueberschriften. "+
+    "Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
     memoryBlock()+
-    "Wenn du etwas Dauerhaftes ueber Marco erfaehrst (Fakten, Ziele, Vorlieben, Wichtiges), haenge es ganz am Ende deiner Antwort unsichtbar an in der Form <remember>kurzer Fakt</remember>. Hoechstens ein bis zwei pro Antwort, nur wirklich Merkenswertes, in dritter Person. Marco sieht diesen Teil nicht. ";
-  if(id==="elias") p+="Wichtig: Du bist Mental-Coach fuer Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
-  if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu aerztlicher Abklaerung raten, nicht diagnostizieren. ";
+    "Wenn du etwas Dauerhaftes über Marco erfährst (Fakten, Ziele, Vorlieben, Wichtiges), hänge es ganz am Ende deiner Antwort unsichtbar an in der Form <remember>kurzer Fakt</remember>. Höchstens ein bis zwei pro Antwort, nur wirklich Merkenswertes, in dritter Person. Marco sieht diesen Teil nicht. ";
+  if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
+  if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
 }
 
@@ -951,7 +959,7 @@ function enterLive(id){
   liveCoachId=id; convHistory=[];
   document.getElementById("chips").innerHTML="";
   showChatbar();
-  const trigger="(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespraech mit dir geoeffnet. Begruesse ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
+  const trigger="(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
   convHistory.push({ role:"user", content:trigger });
   const typ=coachThinking();
   askClaude(id, convHistory).then(r=>{
@@ -1056,6 +1064,13 @@ document.getElementById("rundenarchiv").innerHTML='<div style="font-size:13px;co
 renderOrbit(); renderDay(); renderLog(); renderStaticOrbs(); renderPicker(); renderCoachCards(); updateMemUI();
 document.getElementById("tagfeed").innerHTML='<div style="font-size:13px;color:var(--text3)">Noch ruhig hier. Sobald dein Team dich kennt, meldet es sich von selbst.</div>';
 const _sb=document.getElementById("startbtn"); if(_sb) _sb.onclick=()=>openCall("viktor");
+(function(){
+  const ow=document.getElementById("orbitwrap"); if(!ow) return;
+  ow.addEventListener("pointerdown",e=>{ _dragLast=e.clientX; _dragMoved=0; });
+  window.addEventListener("pointermove",e=>{ if(_dragLast!=null){ const dx=e.clientX-_dragLast; dragSpin+=dx*0.007; _dragMoved+=Math.abs(dx); _dragLast=e.clientX; } });
+  window.addEventListener("pointerup",()=>{ _dragLast=null; });
+  window.addEventListener("mousemove",e=>{ mouseSpinT=(e.clientX/window.innerWidth-0.5)*1.3; });
+})();
 runFX("home");
 
 setTimeout(()=>{
@@ -1079,7 +1094,7 @@ const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused
 /* Anthropic-Einstellungen */
 (function(){
   const s=document.getElementById("anthstatus");
-  function stat(){ s.textContent = anthKey ? "Aktiv — 1:1-Gespraeche denken wirklich." : "Kein Key — Coaches nutzen feste Antworten."; }
+  function stat(){ s.textContent = anthKey ? "Aktiv — 1:1-Gespräche denken wirklich." : "Kein Key — Coaches nutzen feste Antworten."; }
   const open=document.getElementById("settingsbtn");
   const prev=open.onclick;
   open.onclick=()=>{ if(prev) prev(); document.getElementById("anthkeyinput").value=anthKey; stat(); };
@@ -1091,7 +1106,7 @@ const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused
     anthKey=""; store.set("anthKey",""); document.getElementById("anthkeyinput").value=""; stat();
   };
   const mr=document.getElementById("memreset");
-  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte loeschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); } };
+  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); } };
   const mb=document.getElementById("membackup");
   if(mb) mb.onclick=()=>{
     const data={ v:1, exported:new Date().toISOString(), memFacts:memFacts, elKey:elKey, anthKey:anthKey, voiceOn:voiceOn };
