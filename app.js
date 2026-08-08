@@ -827,26 +827,54 @@ async function sbTryRefresh(){
   const rt=store.get("sbRefresh"); if(!rt) return false;
   try{ const d=await sbAuth("token?grant_type=refresh_token",{ refresh_token:rt }); sbSetSession(d); return true; }catch(e){ return false; }
 }
-async function dbSelectFacts(){
+function itemToRow(it){
+  const row={ text:it.text, kind:it.kind||"fact", coach:it.coach||"core" };
+  row.attr_key = it.key || null;
+  row.happened_on = it.date || null;
+  return row;
+}
+function rowToItem(r){
+  return { id:r.id, text:r.text, kind:r.kind||"fact", coach:r.coach||"core",
+    key:r.attr_key||undefined, date:r.happened_on||undefined };
+}
+async function dbSelectMemory(){
+  const q="/rest/v1/facts?select=id,text,kind,coach,attr_key,happened_on&order=created_at.asc";
   try{
-    let r=await fetch(SB_URL+"/rest/v1/facts?select=text,created_at&order=created_at.asc", { headers:sbHeaders() });
-    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+"/rest/v1/facts?select=text,created_at&order=created_at.asc", { headers:sbHeaders() }); }
+    let r=await fetch(SB_URL+q, { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
     if(!r.ok) return null; return await r.json();
   }catch(e){ return null; }
 }
-async function dbInsertFact(text){ try{ await fetch(SB_URL+"/rest/v1/facts", { method:"POST", headers:Object.assign(sbHeaders(),{Prefer:"return=minimal"}), body:JSON.stringify({ text }) }); }catch(e){} }
+async function dbInsertMemory(it){
+  try{
+    const r=await fetch(SB_URL+"/rest/v1/facts", { method:"POST",
+      headers:Object.assign(sbHeaders(),{Prefer:"return=representation"}), body:JSON.stringify(itemToRow(it)) });
+    if(r.ok){ const rows=await r.json(); if(rows&&rows[0]&&rows[0].id) it.id=rows[0].id; }
+  }catch(e){}
+}
+async function dbUpdateMemory(it){
+  if(!it.id){ return dbInsertMemory(it); }
+  try{ await fetch(SB_URL+"/rest/v1/facts?id=eq."+encodeURIComponent(it.id), { method:"PATCH",
+    headers:Object.assign(sbHeaders(),{Prefer:"return=minimal"}),
+    body:JSON.stringify(Object.assign(itemToRow(it),{ updated_at:new Date().toISOString() })) }); }catch(e){}
+}
+async function dbDeleteMemory(it){
+  try{
+    if(it.id){ await fetch(SB_URL+"/rest/v1/facts?id=eq."+encodeURIComponent(it.id), { method:"DELETE", headers:sbHeaders() }); }
+    else { await fetch(SB_URL+"/rest/v1/facts?user_id=eq."+encodeURIComponent(sbUserId)+"&text=eq."+encodeURIComponent(it.text), { method:"DELETE", headers:sbHeaders() }); }
+  }catch(e){}
+}
 async function dbDeleteAll(){ try{ await fetch(SB_URL+"/rest/v1/facts?user_id=eq."+encodeURIComponent(sbUserId), { method:"DELETE", headers:sbHeaders() }); }catch(e){} }
-async function syncFactsFromDB(){
+async function syncMemoryFromDB(){
   if(!sbUser || !sbToken) return;
-  const rows=await dbSelectFacts(); if(rows===null) return;
-  const dbFacts=rows.map(r=>r.text);
-  if(dbFacts.length===0 && memFacts.length){ for(const f of memFacts){ await dbInsertFact(f); } }
-  else { memFacts=dbFacts; }
+  const rows=await dbSelectMemory(); if(rows===null) return;
+  if(rows.length===0 && memItems.length){ for(const it of memItems){ await dbInsertMemory(it); } }
+  else { memItems=rows.map(rowToItem); }
   saveMem(); updateMemUI();
 }
-async function pushAllFactsReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const f of memFacts){ await dbInsertFact(f); } }
+async function pushAllMemoryReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const it of memItems){ it.id=undefined; await dbInsertMemory(it); } }
 async function sbRefreshSession(){
-  if(store.get("sbRefresh")){ if(await sbTryRefresh()){ updateAuthUI(); await syncFactsFromDB(); return; } sbClear(); }
+  if(store.get("sbRefresh")){ if(await sbTryRefresh()){ updateAuthUI(); await syncMemoryFromDB(); return; } sbClear(); }
   updateAuthUI();
 }
 function wireAuth(){
@@ -857,40 +885,48 @@ function wireAuth(){
   login.onclick=async()=>{
     st.textContent="Melde an …";
     try{ const d=await sbAuth("token?grant_type=password",{ email:(em.value||"").trim(), password:pw.value||"" });
-      sbSetSession(d); pw.value=""; updateAuthUI(); await syncFactsFromDB();
+      sbSetSession(d); pw.value=""; updateAuthUI(); await syncMemoryFromDB();
     }catch(e){ st.textContent="✗ "+e.message; }
   };
   signup.onclick=async()=>{
     st.textContent="Erstelle Konto …";
     try{ const d=await sbAuth("signup",{ email:(em.value||"").trim(), password:pw.value||"" });
-      if(d.access_token){ sbSetSession(d); pw.value=""; updateAuthUI(); await syncFactsFromDB(); }
+      if(d.access_token){ sbSetSession(d); pw.value=""; updateAuthUI(); await syncMemoryFromDB(); }
       else { st.textContent="Konto erstellt. Jetzt „Anmelden“ tippen."; }
     }catch(e){ st.textContent="✗ "+e.message; }
   };
   logout.onclick=()=>{ sbClear(); updateAuthUI(); };
 }
 
+const KIND_LABEL={ fact:"Dauerhaft", state:"Aktuell", milestone:"Verlauf" };
+function memCoachLabel(c){ if(!c||c==="core") return "Kern"; if(c==="all") return "Alle"; return COACHES[c]?COACHES[c].name:c; }
+function memCoachColor(c){ return (c&&COACHES[c])?COACHES[c].hex:"#8b7ff0"; }
 function updateMemUI(){
-  const c=document.getElementById("memcount"); if(c) c.textContent=memFacts.length+" gemerkt";
+  const cnt=document.getElementById("memcount"); if(cnt) cnt.textContent=memItems.length+" gemerkt";
   const list=document.getElementById("memlist"); if(!list) return;
-  if(!memFacts.length){
+  if(!memItems.length){
     list.innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch nichts gemerkt. Sprich mit einem Coach — was du teilst, landet hier.</div>';
     return;
   }
-  list.innerHTML = memFacts.map((f,i)=>
-    '<div class="logrow" style="align-items:center"><div class="lr-ico">•</div>'+
-    '<div style="flex:1">'+esc(f)+'</div>'+
-    '<button class="memdel" data-i="'+i+'" title="Diesen Fakt vergessen" aria-label="Fakt löschen">✕</button></div>').join("");
-  list.querySelectorAll(".memdel").forEach(b=>{ b.onclick=()=>removeFact(memFacts[+b.dataset.i]); });
+  const rank={fact:0,state:1,milestone:2};
+  const sorted=memItems.map((it,i)=>({it,i})).sort((a,b)=>(rank[a.it.kind]||0)-(rank[b.it.kind]||0));
+  list.innerHTML=sorted.map(({it,i})=>{
+    const col=memCoachColor(it.coach);
+    let txt=esc(it.text);
+    if(it.kind==="state" && it.key) txt='<b>'+esc(it.key)+':</b> '+txt;
+    if(it.kind==="milestone" && it.date) txt='<span class="mdate">'+esc(it.date)+'</span> '+txt;
+    const badges='<span class="mkind">'+(KIND_LABEL[it.kind]||"Dauerhaft")+'</span>'+
+      '<span class="mtag" style="color:'+col+';border-color:'+col+'66">'+memCoachLabel(it.coach)+'</span>';
+    return '<div class="logrow" style="align-items:flex-start"><div style="flex:1">'+txt+
+      '<div style="margin-top:4px">'+badges+'</div></div>'+
+      '<button class="memdel" data-i="'+i+'" title="Vergessen" aria-label="Vergessen">✕</button></div>';
+  }).join("");
+  list.querySelectorAll(".memdel").forEach(b=>{ b.onclick=()=>removeItemAt(+b.dataset.i); });
 }
-async function dbDeleteFact(text){
-  try{ await fetch(SB_URL+"/rest/v1/facts?user_id=eq."+encodeURIComponent(sbUserId)+"&text=eq."+encodeURIComponent(text),
-    { method:"DELETE", headers:sbHeaders() }); }catch(e){}
-}
-function removeFact(text){
-  const before=memFacts.length;
-  memFacts=memFacts.filter(x=>x!==text);
-  if(memFacts.length!==before){ saveMem(); updateMemUI(); if(sbUser) dbDeleteFact(text); }
+function removeItemAt(i){
+  const it=memItems[i]; if(!it) return;
+  memItems.splice(i,1); saveMem(); updateMemUI();
+  if(sbUser) dbDeleteMemory(it);
 }
 function renderCoachCards(){
   const car=document.getElementById("coachcarousel"); if(!car) return;
@@ -1061,9 +1097,58 @@ function openSession(topicKey){
 }
 
 /* ===== Live-Coaching (Claude-API) ===== */
-let memFacts=[];
-try{ memFacts=JSON.parse(store.get("memFacts")||"[]"); if(!Array.isArray(memFacts)) memFacts=[]; }catch(e){ memFacts=[]; }
-function saveMem(){ store.set("memFacts", JSON.stringify(memFacts)); }
+/* Gedächtnis 2.0: Einträge sind Objekte { text, kind, coach, key?, date?, id? }
+   kind: 'fact' (dauerhaft) | 'state' (aktuell, per key überschreibbar) | 'milestone' (Verlauf, mit date)
+   coach: 'core' (alle) | Coach-ID | 'all' */
+let memItems=[];
+try{ memItems=JSON.parse(store.get("memItems")||"[]"); if(!Array.isArray(memItems)) memItems=[]; }catch(e){ memItems=[]; }
+// Einmalige Migration vom alten flachen Fakten-Format
+if(!memItems.length){ try{ const old=JSON.parse(store.get("memFacts")||"[]");
+  if(Array.isArray(old)&&old.length){ memItems=old.map(t=>({ text:String(t), kind:"fact", coach:"core" })); store.set("memItems",JSON.stringify(memItems)); }
+}catch(e){} }
+function saveMem(){ store.set("memItems", JSON.stringify(memItems)); }
+const MEM_KINDS=["fact","state","milestone"];
+function normCoach(c){ c=(c||"").toLowerCase().trim(); if(c==="core"||c==="all"||COACHES[c]) return c; return "core"; }
+function addItems(items){
+  const added=[], changed=[];
+  (items||[]).forEach(raw=>{
+    const it={ text:(raw.text||"").trim(), kind:MEM_KINDS.includes(raw.kind)?raw.kind:"fact",
+      coach:normCoach(raw.coach), key:(raw.key||"").trim()||undefined, date:(raw.date||"").trim()||undefined };
+    if(!it.text || it.text.length>240) return;
+    if(it.kind==="state" && it.key){
+      const ex=memItems.find(x=>x.kind==="state" && x.key===it.key && x.coach===it.coach);
+      if(ex){ if(ex.text!==it.text || ex.date!==it.date){ ex.text=it.text; ex.date=it.date; changed.push(ex); } return; }
+    }
+    if(memItems.some(x=>x.kind===it.kind && x.text.toLowerCase()===it.text.toLowerCase())) return;
+    memItems.push(it); added.push(it);
+  });
+  if(added.length||changed.length){ saveMem(); updateMemUI();
+    if(sbUser){ added.forEach(it=>dbInsertMemory(it)); changed.forEach(it=>dbUpdateMemory(it)); }
+  }
+}
+function cleanupMemory(){
+  const statusEl=document.getElementById("memcleanstatus");
+  const say=(t)=>{ if(statusEl) statusEl.textContent=t; };
+  if(!anthKey){ say("Dafür braucht es den Coach-Intelligenz-Key (⚙︎)."); return; }
+  if(!memItems.length){ say("Nichts zu tun — das Gedächtnis ist leer."); return; }
+  if(cleanupMemory._busy) return; cleanupMemory._busy=true;
+  say("Räume auf …");
+  const payload=JSON.stringify(memItems.map(it=>({ text:it.text, kind:it.kind, coach:it.coach, key:it.key||undefined, date:it.date||undefined })));
+  const sys="Du räumst Marcos Coaching-Gedächtnis auf. Eingabe ist ein JSON-Array von Einträgen {text,kind,coach,key,date}. "+
+    "Regeln: Führe Dubletten und inhaltlich überlappende Einträge zusammen. Bei mehreren 'state'-Einträgen mit gleichem coach+key behalte nur den aktuellsten/plausibelsten. Entferne Belangloses und Widersprüchliches. "+
+    "Behalte alle 'milestone'-Einträge (sie zeigen Entwicklung über Zeit). Formuliere knapp und in dritter Person. Füge NICHTS Neues hinzu und erfinde nichts. "+
+    "kind ist fact|state|milestone; coach ist core|"+ORDER.join("|")+"|all. "+
+    "Antworte AUSSCHLIESSLICH als JSON-Array im exakt gleichen Format, ohne Text drumherum.";
+  claudeRaw(sys, [{ role:"user", content:payload }], 1500).then(txt=>{
+    let arr=[]; try{ const m=txt.match(/\[[\s\S]*\]/); arr=JSON.parse(m?m[0]:txt); }catch(e){ arr=[]; }
+    if(!Array.isArray(arr) || !arr.length){ say("Aufräumen abgebrochen — nichts geändert."); cleanupMemory._busy=false; return; }
+    const before=memItems.length;
+    memItems=arr.map(it=>({ text:String(it.text||"").trim(), kind:MEM_KINDS.includes(it.kind)?it.kind:"fact", coach:normCoach(it.coach), key:(it.key||"").trim()||undefined, date:(it.date||"").trim()||undefined })).filter(it=>it.text);
+    saveMem(); updateMemUI(); if(sbUser) pushAllMemoryReplace();
+    say("Aufgeräumt: "+before+" → "+memItems.length+" Einträge.");
+    cleanupMemory._busy=false;
+  }).catch(e=>{ say("✗ "+anthErr(e)); cleanupMemory._busy=false; });
+}
 let logEntries=[];
 try{ logEntries=JSON.parse(store.get("logEntries")||"[]"); if(!Array.isArray(logEntries)) logEntries=[]; }catch(e){ logEntries=[]; }
 function saveLog(){ store.set("logEntries", JSON.stringify(logEntries)); }
@@ -1084,29 +1169,44 @@ function summarizeConversation(coachId, hist){
     saveLog(); renderLog();
   }).catch(()=>{});
 }
-function addFacts(arr){
-  const added=[];
-  (arr||[]).forEach(f=>{ f=(f||"").trim();
-    if(f && f.length<220 && !memFacts.some(x=>x.toLowerCase()===f.toLowerCase())){ memFacts.push(f); added.push(f); } });
-  if(added.length){ saveMem(); updateMemUI();
-    if(sbUser){ added.forEach(f=>dbInsertFact(f)); }
-  }
+function parseRememberTag(attrStr, body){
+  const get=(name)=>{ const m=(attrStr||"").match(new RegExp(name+'\\s*=\\s*"([^"]*)"','i'))||(attrStr||"").match(new RegExp(name+"\\s*=\\s*'([^']*)'","i")); return m?m[1].trim():""; };
+  return { text:(body||"").trim(), kind:get("kind").toLowerCase()||"fact", coach:get("coach")||"core", key:get("key"), date:get("date") };
 }
 function processReply(t){
   let str=(t||"");
-  const facts=[];
-  // vollständige remember-Blöcke: Fakt merken, aus Anzeige entfernen
-  str=str.replace(/<\s*remember\s*>([\s\S]*?)<\s*\/\s*remember\s*>/gi,(m,p)=>{ if(p.trim()) facts.push(p.trim()); return " "; });
-  // abgeschnittener remember-Tag am Ende (Truncation): nur entfernen, NICHT als Fakt speichern
-  str=str.replace(/<\s*remember\s*>[\s\S]*$/i," ");
-  // etwaige lose Tag-Fragmente
-  str=str.replace(/<\/?\s*remember\s*>/gi," ").replace(/<\/?\s*rem[a-z]*$/i," ");
+  const items=[];
+  // vollständige remember-Blöcke (mit optionalen Attributen): merken + aus Anzeige entfernen
+  str=str.replace(/<\s*remember\b([^>]*)>([\s\S]*?)<\s*\/\s*remember\s*>/gi,(m,attrs,body)=>{ if(body.trim()) items.push(parseRememberTag(attrs,body)); return " "; });
+  // abgeschnittener Tag am Ende (Truncation): nur entfernen, NICHT speichern
+  str=str.replace(/<\s*remember\b[\s\S]*$/i," ");
+  // lose Fragmente
+  str=str.replace(/<\/?\s*remember\b[^>]*>/gi," ").replace(/<\/?\s*rem[a-z]*$/i," ");
   const clean=str.replace(/\s{2,}/g," ").trim();
-  return { clean:clean||"…", facts };
+  return { clean:clean||"…", items };
 }
-function memoryBlock(){
-  if(!memFacts.length) return "Du kennst Marco noch gar nicht — dies ist einer eurer allerersten Momente. Sei aufrichtig neugierig: stelle ihm warme, offene Fragen über sein Leben, seine Ziele und was ihn bewegt — immer eine nach der anderen, nie wie ein Fragebogen. ";
-  return "Das weißt du bereits über Marco:\n- "+memFacts.join("\n- ")+"\nBeziehe dich natürlich darauf und lerne behutsam mehr über ihn. ";
+function memoryFor(coachId){
+  const all = !coachId || coachId==="viktor" || coachId==="all";
+  return memItems.filter(it=> all ? true : (it.coach==="core" || it.coach==="all" || it.coach===coachId));
+}
+function memoryBlock(coachId){
+  const items=memoryFor(coachId);
+  if(!items.length) return "Du kennst Marco noch gar nicht — dies ist einer eurer allerersten Momente. Sei aufrichtig neugierig: stelle ihm warme, offene Fragen über sein Leben, seine Ziele und was ihn bewegt — immer eine nach der anderen, nie wie ein Fragebogen. Erfinde nichts über ihn. ";
+  const facts=items.filter(x=>x.kind==="fact"), states=items.filter(x=>x.kind==="state"), miles=items.filter(x=>x.kind==="milestone");
+  let s="Das weißt du über Marco (nutze nur das hier, erfinde nichts dazu):\n";
+  if(facts.length) s+="Dauerhaft:\n"+facts.map(f=>"- "+f.text).join("\n")+"\n";
+  if(states.length) s+="Aktueller Stand:\n"+states.map(f=>"- "+(f.key?f.key+": ":"")+f.text).join("\n")+"\n";
+  if(miles.length) s+="Verlauf (Entwicklung über Zeit):\n"+miles.slice(-12).map(f=>"- "+(f.date?f.date+": ":"")+f.text).join("\n")+"\n";
+  s+="Beziehe dich natürlich darauf und lerne behutsam mehr. ";
+  return s;
+}
+function rememberInstructions(id){
+  const today=new Date().toISOString().slice(0,10);
+  return "Wenn du etwas Merkenswertes über Marco erfährst, hänge es GANZ am Ende deiner Antwort unsichtbar an (Marco sieht das nicht). "+
+    "Format: <remember coach=\"BEREICH\" kind=\"TYP\">kurzer Text in dritter Person</remember>. "+
+    "BEREICH: 'core' für Persönliches/Werte (gilt für alle Coaches) oder eine Coach-ID ("+ORDER.join(", ")+") — meist dein eigener Bereich ("+id+"). "+
+    "TYP: 'fact' für Dauerhaftes (wer er ist, Werte, Vorlieben); 'state' für Aktuelles, das sich ändert — dann zusätzlich key=\"kurzerSchlüssel\" (z. B. kind=\"state\" key=\"trainingsfrequenz\"); 'milestone' für Fortschritt/Ereignisse — dann zusätzlich date=\"JJJJ-MM-TT\" (heute ist "+today+"). "+
+    "Aktualisierst du einen Zustand, verwende exakt denselben key wie zuvor. Höchstens ein bis zwei pro Antwort, nur wirklich Wichtiges. ";
 }
 function systemPrompt(id){
   const c=COACHES[id];
@@ -1114,8 +1214,8 @@ function systemPrompt(id){
     "Wesen: "+c.vibe+". Dein Auftrag: "+MISSIONS[id]+" Dein Leitsatz: "+QUOTES[id]+" "+
     "Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
-    memoryBlock()+
-    "Wenn du etwas Dauerhaftes über Marco erfährst (Fakten, Ziele, Vorlieben, Wichtiges), hänge es ganz am Ende deiner Antwort unsichtbar an in der Form <remember>kurzer Fakt</remember>. Höchstens ein bis zwei pro Antwort, nur wirklich Merkenswertes, in dritter Person. Marco sieht diesen Teil nicht. ";
+    memoryBlock(id)+
+    rememberInstructions(id);
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
@@ -1217,7 +1317,7 @@ function streamCoach(id, token){
   log.appendChild(typ); log.scrollTop=log.scrollHeight;
   return askClaude(id, convHistory).then(r=>{
     if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
-    const pr=processReply(r); addFacts(pr.facts);
+    const pr=processReply(r); addItems(pr.items);
     convHistory.push({ role:"assistant", content:pr.clean });
     return revealSynced(id, pr.clean, token, typ);
   }).catch(e=>{
@@ -1340,7 +1440,7 @@ runFX("home");
 
 setTimeout(()=>{
   if(callOpen || !anthKey) return;
-  const who = memFacts.length ? "elias" : "viktor";
+  const who = memItems.length ? "elias" : "viktor";
   ping(who,"Kennenlernen","Ich bin neugierig auf dich — hast du kurz Zeit?",who);
   orbPulse(who,true);
   orbitSay(who,"Neugierig","<b>"+COACHES[who].name+" möchte dich kennenlernen.</b>");
@@ -1402,14 +1502,16 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
     anthKey=""; store.set("anthKey",""); document.getElementById("anthkeyinput").value=""; stat();
   };
   const mr=document.getElementById("memreset");
-  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); if(sbUser){ dbDeleteAll(); } } };
+  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memItems=[]; saveMem(); updateMemUI(); if(sbUser){ dbDeleteAll(); } } };
+  const mc=document.getElementById("memclean");
+  if(mc) mc.onclick=()=>cleanupMemory();
   const mb=document.getElementById("membackup");
   if(mb) mb.onclick=()=>{
-    const data={ v:1, exported:new Date().toISOString(), memFacts:memFacts, elKey:elKey, anthKey:anthKey, voiceOn:voiceOn };
+    const data={ v:2, exported:new Date().toISOString(), memItems:memItems, elKey:elKey, anthKey:anthKey, voiceOn:voiceOn };
     const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
     a.download="mein-team-backup.json"; document.body.appendChild(a); a.click(); a.remove();
-    s.textContent="Sicherung heruntergeladen ("+memFacts.length+" Fakten).";
+    s.textContent="Sicherung heruntergeladen ("+memItems.length+" Einträge).";
   };
   const mi=document.getElementById("memimport"), mf=document.getElementById("memfile");
   if(mi&&mf){
@@ -1419,12 +1521,19 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
       const rd=new FileReader();
       rd.onload=()=>{ try{
         const d=JSON.parse(rd.result);
-        if(Array.isArray(d.memFacts)){ memFacts=d.memFacts.slice(); saveMem(); updateMemUI(); if(sbUser) pushAllFactsReplace(); }
+        let n=0;
+        if(Array.isArray(d.memItems)){
+          memItems=d.memItems.map(it=>({ text:String(it.text||""), kind:MEM_KINDS.includes(it.kind)?it.kind:"fact", coach:normCoach(it.coach), key:it.key||undefined, date:it.date||undefined })).filter(it=>it.text);
+          n=memItems.length; saveMem(); updateMemUI(); if(sbUser) pushAllMemoryReplace();
+        } else if(Array.isArray(d.memFacts)){
+          memItems=d.memFacts.map(t=>({ text:String(t), kind:"fact", coach:"core" })); n=memItems.length;
+          saveMem(); updateMemUI(); if(sbUser) pushAllMemoryReplace();
+        }
         if(typeof d.elKey==="string"){ elKey=d.elKey; store.set("elKey",elKey); }
         if(typeof d.anthKey==="string"){ anthKey=d.anthKey; store.set("anthKey",anthKey); document.getElementById("anthkeyinput").value=anthKey; }
         if(typeof d.voiceOn==="boolean"){ voiceOn=d.voiceOn; store.set("voiceOn",voiceOn?"1":"0"); }
         elFail=false; syncToggles(); stat();
-        s.textContent="Geladen: "+((d.memFacts||[]).length)+" Fakten + Einstellungen.";
+        s.textContent="Geladen: "+n+" Einträge + Einstellungen.";
       }catch(e){ s.textContent="Konnte Datei nicht lesen."; } mf.value=""; };
       rd.readAsText(f);
     };
