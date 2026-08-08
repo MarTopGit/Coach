@@ -667,7 +667,7 @@ function renderOrbit(){
   cen.onclick=()=>flyOpen("viktor",cen);
   orbitT0=performance.now();
   requestAnimationFrame(orbitLoop);
-  orbitSay("viktor","Willkommen","Dein Team ist neu hier — und <b>neugierig auf dich</b>. Tippe einen Coach an.","viktor");
+  orbitSay("viktor","Willkommen","Dein Team ist neu hier — und <b>neugierig auf dich</b>.","viktor");
 }
 function orbitLoop(nowT){
   const t=nowT-orbitT0;
@@ -680,7 +680,7 @@ function orbitLoop(nowT){
     const ang=Math.PI/2+i*Math.PI/3+t*OW+dragSpin+mouseSpin;
     const z=Math.sin(ang), f=(z+1)/2;
     const x=OCX+Math.cos(ang)*ORX*sp, y=OCY+Math.sin(ang)*ORY*sp;
-    const sc=(.56+.72*f)*(.3+.7*Math.min(1,pe*1.15));
+    const sc=(.12+1.18*f)*(.3+.7*Math.min(1,pe*1.15));
     o.style.left=(x-38).toFixed(1)+"px";
     o.style.top=(y-38).toFixed(1)+"px";
     o.style.transform="scale("+sc.toFixed(3)+")";
@@ -735,9 +735,7 @@ const ACTIONS=[
   { ico:"🤝", t:"Viktor & Mara · Team-Runde „Belastung nächste Woche“ gestartet", time:"gestern 21:40" },
 ];
 function renderLog(){
-  document.getElementById("actionlog").innerHTML=ACTIONS.map(a=>`
-    <div class="logrow"><div class="lr-ico">${a.ico}</div>
-    <div><div>${a.t}</div><div class="lr-t">${a.time}</div></div></div>`).join("");
+  document.getElementById("actionlog").innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch keine Aktionen. Sobald dein Team etwas für dich tut oder vorschlägt, steht es hier — nachvollziehbar und widerrufbar.</div>';
 }
 function feedItem(coachId,title,body,time,target){
   const c=COACHES[coachId];
@@ -979,6 +977,54 @@ function renderPicker(){
   });
   selectedParts=ORDER.slice();
 }
+function claudeRaw(system, messages, maxTokens){
+  return fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{ "content-type":"application/json", "x-api-key":anthKey, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:maxTokens||1000, system:system, messages:messages })
+  }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
+    .then(d=>((d.content||[]).filter(x=>x.type==="text").map(x=>x.text).join(" ")).trim());
+}
+function openLiveRound(topic){
+  topic=(topic||"").trim(); if(!topic) return;
+  const parts=(selectedParts&&selectedParts.length)?selectedParts.slice():ORDER.slice();
+  paused=false; resumeFn=null; liveMode=false; liveCoachId=null;
+  currentScript={ isTeam:true, parts:parts }; isTeam=true; callOpen=true;
+  const call=document.getElementById("call");
+  document.getElementById("transcript").innerHTML="";
+  document.getElementById("chips").innerHTML="";
+  const _cb=document.getElementById("chatbar"); if(_cb) _cb.style.display="none";
+  const tr=document.getElementById("teamrow"); tr.style.display="flex";
+  tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join("");
+  setSpeaker(parts[0], true);
+  call.classList.toggle("teammode", true); call.classList.add("open");
+  const log=document.getElementById("transcript");
+  log.appendChild(el('<div class="tsys">Team-Runde · '+esc(topic)+'</div>'));
+  const typ=el('<div class="tsys">Das Team überlegt …</div>'); log.appendChild(typ);
+  const roster=parts.map(id=>COACHES[id].name+" ("+COACHES[id].role+", "+COACHES[id].vibe+", id: "+id+")").join("; ");
+  const sys="Du inszenierst eine kurze, faire Besprechung von Marcos persönlichem Coaching-Team zu einem Thema. "+
+    "Teilnehmer: "+roster+". Jeder spricht aus seinem Charakter und seiner Rolle, hört den anderen zu, gibt ihnen auch recht, baut auf ihren Punkten auf. "+
+    "Es wird NICHT gestritten — die Runde läuft auf einen gemeinsamen Konsens hinaus, es geht um das beste Ergebnis für Marco, nicht ums Rechthaben. Deutsch, per Du, gesprochen, jeder Beitrag 1 bis 3 Sätze. "+
+    memoryBlock()+
+    "Erfinde KEINE Daten über Marco (keine Whoop-Werte, keine Trainingszahlen), wenn sie nicht oben stehen. "+
+    "Antworte AUSSCHLIESSLICH als reines JSON-Array, ohne Text drumherum, Format: [{\"coach\":\"<id>\",\"text\":\"...\"}]. "+
+    "Erlaubte coach-ids: "+parts.join(", ")+". 6 bis 9 Beiträge, der letzte fasst den gemeinsamen Konsens zusammen.";
+  const tk=++seqToken;
+  claudeRaw(sys, [{ role:"user", content:"Thema: "+topic }], 1100).then(txt=>{
+    if(tk!==seqToken) return;
+    try{ typ.remove(); }catch(e){}
+    let turns=[];
+    try{ const m=txt.match(/\[[\s\S]*\]/); turns=JSON.parse(m?m[0]:txt); }catch(e){ turns=[]; }
+    turns=(turns||[]).filter(t=>t&&COACHES[t.coach]&&parts.indexOf(t.coach)>=0&&t.text);
+    if(!turns.length){ addMsg("sys","Konnte die Runde nicht erzeugen — bitte nochmal versuchen."); return; }
+    const msgs=turns.map(t=>[t.coach, String(t.text)]);
+    runSequence(msgs, ()=>showChips([{ t:"Runde beenden", end:true }]), tk);
+  }).catch(e=>{ try{ typ.remove(); }catch(_){} addMsg("sys","⚠︎ "+anthErr(e)); });
+}
+function startRound(topic){
+  if(!anthKey){ const th=document.getElementById("topichint"); if(th){ th.style.display="block"; th.textContent="Dafür braucht dein Team den Coach-Intelligenz-Key (⚙︎)."; } return; }
+  openLiveRound(topic);
+}
 function openSession(topicKey){
   SCRIPTS._session=buildSession(topicKey);
   openCall("_session");
@@ -1153,13 +1199,12 @@ function renderStaticOrbs(){
     '<div class="orb '+(AVOK[id]?"hasimg":"")+'" style="width:38px;height:38px;font-size:13px;'+(i?"margin-left:-10px;":"")+"border:2px solid #fff;"+orbStyle(id)+'">'+avatarInner(id)+'</div>').join(""); }
 }
 var _tr=document.getElementById("teaser-runde"); if(_tr) _tr.onclick=()=>showView("runde");
-document.getElementById("lobbyplay").onclick=()=>openCall("team");
-document.getElementById("lobbyread").onclick=()=>{
-  const sm=document.getElementById("lobbysummary");
-  sm.style.display = sm.style.display==="none" ? "block" : "none"; };
-document.getElementById("topic-marathon").onclick=()=>openSession("marathon");
-document.getElementById("topic-energy").onclick=()=>openSession("energy");
-document.getElementById("topic-own").onclick=()=>{ document.getElementById("topichint").style.display="block"; };
+document.getElementById("topic-marathon").onclick=()=>startRound("Sollte ich im Herbst einen Marathon laufen?");
+document.getElementById("topic-energy").onclick=()=>startRound("Wie bekomme ich nachmittags mehr Energie?");
+document.getElementById("topic-own").onclick=()=>{ const ow=document.getElementById("ownwrap"); if(ow){ ow.style.display="block"; const i=document.getElementById("owntopic"); if(i) setTimeout(()=>{try{i.focus();}catch(e){}},150); } };
+(function(){ const b=document.getElementById("ownstart"), i=document.getElementById("owntopic");
+  if(b&&i){ b.onclick=()=>{ const t=i.value.trim(); if(t){ i.value=""; startRound(t); } };
+    i.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); b.onclick(); } }); } })();
 document.getElementById("rundenarchiv").innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch keine Runden — sie erscheinen hier, sobald dein Team welche haelt.</div>';
 
 renderOrbit(); renderDay(); renderLog(); renderStaticOrbs(); renderPicker(); renderCoachCards(); updateMemUI();
@@ -1179,7 +1224,7 @@ setTimeout(()=>{
   const who = memFacts.length ? "elias" : "viktor";
   ping(who,"Kennenlernen","Ich bin neugierig auf dich — hast du kurz Zeit?",who);
   orbPulse(who,true);
-  orbitSay(who,"Neugierig","<b>"+COACHES[who].name+" moechte dich kennenlernen.</b> Antippen zum Sprechen.");
+  orbitSay(who,"Neugierig","<b>"+COACHES[who].name+" möchte dich kennenlernen.</b>");
 }, 9000);
 
 const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused(!paused);

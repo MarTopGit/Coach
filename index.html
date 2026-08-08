@@ -282,7 +282,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
         <div id="orbs"></div>
       </div>
       <div id="frontname"></div>
-      <div id="scrollcue">nach unten wischen ↓</div>
     </div>
     <div id="orbitmsg"></div>
 
@@ -308,38 +307,23 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
   <div class="view" id="view-runde">
     <div class="sectitle" style="margin-top:6px">Team-Runde</div>
-    <div class="secsub">Zwei Meinungen. Eine Empfehlung. Dein Wort.</div>
+    <div class="secsub">Dein Team bespricht ein Thema — offen, fair, bis ein Konsens steht.</div>
 
-    <h2 class="fx fx-up">Team-Runde · Beispiel</h2>
-    <div class="glass fx fx-up" style="--d:.1s;display:flex;gap:12px;align-items:center">
-      <div id="prevorbs" style="display:flex"></div>
-      <div style="flex:1;font-size:13px;color:var(--text2);line-height:1.5">Deine Coaches besprechen ein Thema gemeinsam — offen, fair, bis ein Konsens steht.</div>
-    </div>
+    <h2 class="fx fx-up">Wer ist dabei?</h2>
+    <div class="pickrow fx fx-up" style="--d:.1s" id="pickrow"></div>
 
-    <div class="glass fx fx-up" style="--d:.5s;padding:16px">
-      <div id="lobbysummary" style="display:none;font-size:13.5px;color:var(--text2);line-height:1.6;
-        border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px">
-        Viktor will intensivieren (Kraftwerte steigen seit 6 Wochen), Mara bremst (Recovery 64 %, Schlaf kurz).
-        Deniz bestätigt beides. <b style="color:var(--text)">Kompromiss:</b> 3 Einheiten, eine intensiv —
-        nur bei Recovery über 70 % · Sonntag frei.
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="chip action" id="lobbyplay" style="flex:1">▶ Anhören & entscheiden</button>
-        <button class="chip" id="lobbyread">Kurzfassung</button>
-      </div>
-    </div>
-
-    <h2 class="fx fx-up" style="--d:.55s">Sitzung einberufen</h2>
-    <div class="secsub fx fx-up" style="--d:.6s;margin-bottom:8px">Wähle, wer am Tisch sitzt — dann dein Thema.</div>
-    <div class="pickrow fx fx-up" style="--d:.65s" id="pickrow"></div>
+    <h2 class="fx fx-up" style="--d:.2s">Thema</h2>
     <div style="display:flex;flex-wrap:wrap;gap:8px">
-      <button class="chip fx fx-up" style="--d:.72s" id="topic-marathon">🏃 „Marathon im Herbst?“</button>
-      <button class="chip fx fx-up" style="--d:.79s" id="topic-energy">⚡ „Mehr Energie nachmittags“</button>
-      <button class="chip fx fx-up" style="--d:.86s" id="topic-own">＋ Eigenes Thema</button>
+      <button class="chip fx fx-up" style="--d:.25s" id="topic-marathon">🏃 Marathon im Herbst?</button>
+      <button class="chip fx fx-up" style="--d:.3s" id="topic-energy">⚡ Mehr Energie nachmittags</button>
+      <button class="chip fx fx-up" style="--d:.35s" id="topic-own">＋ Eigenes Thema</button>
     </div>
-    <div id="topichint" style="display:none;font-size:12px;color:var(--text3);margin-top:8px">
-      Freie Themen beantwortet dein Team, sobald die Coaches echt denken (nächste Etappe).
+    <div id="ownwrap" style="display:none;margin-top:10px">
+      <input id="owntopic" placeholder="Dein Thema für die Runde…" autocomplete="off"
+        style="width:100%;background:#fff;border:1px solid var(--line2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:14px;margin-bottom:8px;box-shadow:var(--soft)">
+      <button class="chip action" id="ownstart" style="width:100%">Runde starten</button>
     </div>
+    <div id="topichint" style="display:none;font-size:12px;color:var(--warn);margin-top:8px"></div>
 
     <h2 class="fx fx-up" style="--d:.85s">Frühere Runden</h2>
     <div class="glass fx fx-up" style="--d:.9s;padding:6px 16px" id="rundenarchiv"></div>
@@ -381,7 +365,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 27</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 28</div>
 </div>
 
 <div id="pills"><div class="inner">
