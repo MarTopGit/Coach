@@ -381,7 +381,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 25</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 26</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -424,6 +424,20 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="settings" style="position:fixed;inset:0;z-index:90;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.22);padding:12px">
   <div class="glass" style="width:min(94vw,380px);max-height:86svh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:20px;background:rgba(255,255,255,.97);backdrop-filter:blur(20px)">
+    <div style="font-size:17px;font-weight:700;margin-bottom:4px">Konto &amp; Sync</div>
+    <div id="authstatus" style="font-size:12.5px;color:var(--text2);line-height:1.5;margin-bottom:10px">Nicht angemeldet — Gedächtnis nur auf diesem Gerät.</div>
+    <div id="authforms">
+      <input id="authemail" type="email" placeholder="E-Mail" autocomplete="username"
+        style="width:100%;background:rgba(0,0,0,.04);border:1px solid var(--line2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:14px;margin-bottom:8px">
+      <input id="authpw" type="password" placeholder="Passwort (mind. 6 Zeichen)" autocomplete="current-password"
+        style="width:100%;background:rgba(0,0,0,.04);border:1px solid var(--line2);border-radius:12px;padding:11px 14px;color:var(--text);font-size:14px;margin-bottom:8px">
+      <div style="display:flex;gap:8px">
+        <button class="chip action" id="authlogin" style="flex:1">Anmelden</button>
+        <button class="chip" id="authsignup">Registrieren</button>
+      </div>
+    </div>
+    <button class="chip" id="authlogout" style="display:none">Abmelden</button>
+    <div style="height:1px;background:var(--line);margin:18px 0"></div>
     <div style="font-size:17px;font-weight:700;margin-bottom:4px">Studio-Stimmen</div>
     <div style="font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
       Mit einem ElevenLabs-API-Key sprechen deine Coaches mit echten, menschlichen Stimmen.
@@ -475,6 +489,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 </body>
 </html>

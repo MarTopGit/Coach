@@ -784,6 +784,74 @@ const TAGS={
   elias:["Mentale Stärke","Schlaf","Reflexion"],
   mara:["Erdung","Balance","Genuss"]
 };
+/* ===== Supabase: Konto + Gedächtnis-Sync ===== */
+const SB_URL="https://hrmhrfuqmdajskoddrxm.supabase.co";
+const SB_KEY="sb_publishable_mOJESkvci5NMQUnDPvwFAw_WceJ10Me";
+let sb=null, sbUser=null;
+function initSB(){
+  if(sb || !window.supabase) return;
+  try{ sb=window.supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:false } }); }catch(e){ sb=null; }
+}
+function updateAuthUI(){
+  const st=document.getElementById("authstatus"), forms=document.getElementById("authforms"), lo=document.getElementById("authlogout");
+  if(!st) return;
+  if(sbUser){ st.textContent="Angemeldet als "+(sbUser.email||"")+" · Gedächtnis wird synchronisiert."; if(forms)forms.style.display="none"; if(lo)lo.style.display="inline-flex"; }
+  else { st.textContent = sb ? "Nicht angemeldet — Gedächtnis nur auf diesem Gerät." : "Sync nicht verfügbar (offline?) — Gedächtnis lokal."; if(forms)forms.style.display="block"; if(lo)lo.style.display="none"; }
+}
+async function syncFactsFromDB(){
+  if(!sb || !sbUser) return;
+  try{
+    const { data, error } = await sb.from("facts").select("text,created_at").order("created_at",{ ascending:true });
+    if(error) return;
+    const dbFacts=(data||[]).map(r=>r.text);
+    if(dbFacts.length===0 && memFacts.length){
+      // Migration: lokales Gedächtnis in die DB heben
+      for(const f of memFacts){ try{ await sb.from("facts").insert({ text:f }); }catch(e){} }
+    } else {
+      memFacts = dbFacts;
+    }
+    saveMem(); updateMemUI();
+  }catch(e){}
+}
+async function sbRefreshSession(){
+  if(!sb) return;
+  try{
+    const { data } = await sb.auth.getSession();
+    sbUser = data && data.session ? data.session.user : null;
+  }catch(e){ sbUser=null; }
+  updateAuthUI();
+  if(sbUser) await syncFactsFromDB();
+}
+async function pushAllFactsReplace(){
+  if(!sb || !sbUser) return;
+  try{
+    await sb.from("facts").delete().eq("user_id", sbUser.id);
+    for(const f of memFacts){ try{ await sb.from("facts").insert({ text:f }); }catch(e){} }
+  }catch(e){}
+}
+function wireAuth(){
+  const em=document.getElementById("authemail"), pw=document.getElementById("authpw");
+  const login=document.getElementById("authlogin"), signup=document.getElementById("authsignup"), logout=document.getElementById("authlogout");
+  const st=document.getElementById("authstatus");
+  if(!login) return;
+  login.onclick=async()=>{
+    if(!sb){ st.textContent="Sync nicht verfügbar."; return; }
+    st.textContent="Melde an …";
+    const { data, error } = await sb.auth.signInWithPassword({ email:(em.value||"").trim(), password:pw.value||"" });
+    if(error){ st.textContent="✗ "+error.message; return; }
+    sbUser=data.user; pw.value=""; await syncFactsFromDB(); updateAuthUI();
+  };
+  signup.onclick=async()=>{
+    if(!sb){ st.textContent="Sync nicht verfügbar."; return; }
+    st.textContent="Erstelle Konto …";
+    const { data, error } = await sb.auth.signUp({ email:(em.value||"").trim(), password:pw.value||"" });
+    if(error){ st.textContent="✗ "+error.message; return; }
+    if(data.session){ sbUser=data.user; pw.value=""; await syncFactsFromDB(); updateAuthUI(); }
+    else { st.textContent="Konto erstellt. Jetzt „Anmelden“ tippen."; }
+  };
+  logout.onclick=async()=>{ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; updateAuthUI(); };
+}
+
 function updateMemUI(){
   const c=document.getElementById("memcount"); if(c) c.textContent=memFacts.length+" gemerkt";
   const list=document.getElementById("memlist");
@@ -916,10 +984,12 @@ let memFacts=[];
 try{ memFacts=JSON.parse(store.get("memFacts")||"[]"); if(!Array.isArray(memFacts)) memFacts=[]; }catch(e){ memFacts=[]; }
 function saveMem(){ store.set("memFacts", JSON.stringify(memFacts)); }
 function addFacts(arr){
-  let ch=false;
+  const added=[];
   (arr||[]).forEach(f=>{ f=(f||"").trim();
-    if(f && f.length<220 && !memFacts.some(x=>x.toLowerCase()===f.toLowerCase())){ memFacts.push(f); ch=true; } });
-  if(ch){ saveMem(); updateMemUI(); }
+    if(f && f.length<220 && !memFacts.some(x=>x.toLowerCase()===f.toLowerCase())){ memFacts.push(f); added.push(f); } });
+  if(added.length){ saveMem(); updateMemUI();
+    if(sb && sbUser){ added.forEach(f=>{ try{ sb.from("facts").insert({ text:f }).then(()=>{},()=>{}); }catch(e){} }); }
+  }
 }
 function processReply(t){
   let str=(t||"");
@@ -1109,6 +1179,9 @@ setTimeout(()=>{
 
 const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused(!paused);
 
+initSB(); wireAuth(); updateAuthUI(); sbRefreshSession();
+if(sb && sb.auth && sb.auth.onAuthStateChange){ try{ sb.auth.onAuthStateChange((_e,session)=>{ sbUser=session?session.user:null; updateAuthUI(); if(sbUser) syncFactsFromDB(); }); }catch(e){} }
+
 
 /* Chat senden */
 (function(){
@@ -1132,7 +1205,7 @@ const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused
     anthKey=""; store.set("anthKey",""); document.getElementById("anthkeyinput").value=""; stat();
   };
   const mr=document.getElementById("memreset");
-  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); } };
+  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); if(sb&&sbUser){ try{ sb.from("facts").delete().eq("user_id",sbUser.id).then(()=>{},()=>{}); }catch(e){} } } };
   const mb=document.getElementById("membackup");
   if(mb) mb.onclick=()=>{
     const data={ v:1, exported:new Date().toISOString(), memFacts:memFacts, elKey:elKey, anthKey:anthKey, voiceOn:voiceOn };
@@ -1149,7 +1222,7 @@ const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused
       const rd=new FileReader();
       rd.onload=()=>{ try{
         const d=JSON.parse(rd.result);
-        if(Array.isArray(d.memFacts)){ memFacts=d.memFacts.slice(); saveMem(); updateMemUI(); }
+        if(Array.isArray(d.memFacts)){ memFacts=d.memFacts.slice(); saveMem(); updateMemUI(); if(sb&&sbUser) pushAllFactsReplace(); }
         if(typeof d.elKey==="string"){ elKey=d.elKey; store.set("elKey",elKey); }
         if(typeof d.anthKey==="string"){ anthKey=d.anthKey; store.set("anthKey",anthKey); document.getElementById("anthkeyinput").value=anthKey; }
         if(typeof d.voiceOn==="boolean"){ voiceOn=d.voiceOn; store.set("voiceOn",voiceOn?"1":"0"); }
