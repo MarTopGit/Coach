@@ -784,50 +784,57 @@ const TAGS={
   elias:["Mentale Stärke","Schlaf","Reflexion"],
   mara:["Erdung","Balance","Genuss"]
 };
-/* ===== Supabase: Konto + Gedächtnis-Sync ===== */
+/* ===== Supabase (fetch-basiert, ohne externe Bibliothek) ===== */
 const SB_URL="https://hrmhrfuqmdajskoddrxm.supabase.co";
 const SB_KEY="sb_publishable_mOJESkvci5NMQUnDPvwFAw_WceJ10Me";
-let sb=null, sbUser=null;
-function initSB(){
-  if(sb || !window.supabase) return;
-  try{ sb=window.supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:false } }); }catch(e){ sb=null; }
+let sbToken=store.get("sbToken")||"";
+let sbUserId=store.get("sbUid")||"";
+let sbUser=(sbToken? { id:sbUserId, email:store.get("sbEmail")||"" } : null);
+function sbHeaders(){ return { "apikey":SB_KEY, "Authorization":"Bearer "+sbToken, "Content-Type":"application/json" }; }
+async function sbAuth(path, body){
+  const r=await fetch(SB_URL+"/auth/v1/"+path, { method:"POST", headers:{ "apikey":SB_KEY, "Content-Type":"application/json" }, body:JSON.stringify(body) });
+  let data={}; try{ data=await r.json(); }catch(e){}
+  if(!r.ok) throw new Error(data.error_description || data.msg || data.error || data.message || ("Fehler "+r.status));
+  return data;
 }
+function sbSetSession(d){
+  sbToken=d.access_token||""; store.set("sbToken",sbToken);
+  if(d.refresh_token) store.set("sbRefresh",d.refresh_token);
+  const u=d.user||{}; sbUserId=u.id||sbUserId; sbUser={ id:sbUserId, email:u.email||store.get("sbEmail")||"" };
+  store.set("sbUid",sbUserId); store.set("sbEmail",sbUser.email);
+}
+function sbClear(){ sbToken=""; sbUser=null; store.set("sbToken",""); store.set("sbRefresh",""); }
 function updateAuthUI(){
   const st=document.getElementById("authstatus"), forms=document.getElementById("authforms"), lo=document.getElementById("authlogout");
   if(!st) return;
-  if(sbUser){ st.textContent="Angemeldet als "+(sbUser.email||"")+" · Gedächtnis wird synchronisiert."; if(forms)forms.style.display="none"; if(lo)lo.style.display="inline-flex"; }
-  else { st.textContent = sb ? "Nicht angemeldet — Gedächtnis nur auf diesem Gerät." : "Sync nicht verfügbar (offline?) — Gedächtnis lokal."; if(forms)forms.style.display="block"; if(lo)lo.style.display="none"; }
+  if(sbUser && sbToken){ st.textContent="Angemeldet als "+(sbUser.email||"")+" · Gedächtnis wird synchronisiert."; if(forms)forms.style.display="none"; if(lo)lo.style.display="inline-flex"; }
+  else { st.textContent="Nicht angemeldet — Gedächtnis nur auf diesem Gerät."; if(forms)forms.style.display="block"; if(lo)lo.style.display="none"; }
 }
+async function sbTryRefresh(){
+  const rt=store.get("sbRefresh"); if(!rt) return false;
+  try{ const d=await sbAuth("token?grant_type=refresh_token",{ refresh_token:rt }); sbSetSession(d); return true; }catch(e){ return false; }
+}
+async function dbSelectFacts(){
+  try{
+    let r=await fetch(SB_URL+"/rest/v1/facts?select=text,created_at&order=created_at.asc", { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+"/rest/v1/facts?select=text,created_at&order=created_at.asc", { headers:sbHeaders() }); }
+    if(!r.ok) return null; return await r.json();
+  }catch(e){ return null; }
+}
+async function dbInsertFact(text){ try{ await fetch(SB_URL+"/rest/v1/facts", { method:"POST", headers:Object.assign(sbHeaders(),{Prefer:"return=minimal"}), body:JSON.stringify({ text }) }); }catch(e){} }
+async function dbDeleteAll(){ try{ await fetch(SB_URL+"/rest/v1/facts?user_id=eq."+encodeURIComponent(sbUserId), { method:"DELETE", headers:sbHeaders() }); }catch(e){} }
 async function syncFactsFromDB(){
-  if(!sb || !sbUser) return;
-  try{
-    const { data, error } = await sb.from("facts").select("text,created_at").order("created_at",{ ascending:true });
-    if(error) return;
-    const dbFacts=(data||[]).map(r=>r.text);
-    if(dbFacts.length===0 && memFacts.length){
-      // Migration: lokales Gedächtnis in die DB heben
-      for(const f of memFacts){ try{ await sb.from("facts").insert({ text:f }); }catch(e){} }
-    } else {
-      memFacts = dbFacts;
-    }
-    saveMem(); updateMemUI();
-  }catch(e){}
+  if(!sbUser || !sbToken) return;
+  const rows=await dbSelectFacts(); if(rows===null) return;
+  const dbFacts=rows.map(r=>r.text);
+  if(dbFacts.length===0 && memFacts.length){ for(const f of memFacts){ await dbInsertFact(f); } }
+  else { memFacts=dbFacts; }
+  saveMem(); updateMemUI();
 }
+async function pushAllFactsReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const f of memFacts){ await dbInsertFact(f); } }
 async function sbRefreshSession(){
-  if(!sb) return;
-  try{
-    const { data } = await sb.auth.getSession();
-    sbUser = data && data.session ? data.session.user : null;
-  }catch(e){ sbUser=null; }
+  if(store.get("sbRefresh")){ if(await sbTryRefresh()){ updateAuthUI(); await syncFactsFromDB(); return; } sbClear(); }
   updateAuthUI();
-  if(sbUser) await syncFactsFromDB();
-}
-async function pushAllFactsReplace(){
-  if(!sb || !sbUser) return;
-  try{
-    await sb.from("facts").delete().eq("user_id", sbUser.id);
-    for(const f of memFacts){ try{ await sb.from("facts").insert({ text:f }); }catch(e){} }
-  }catch(e){}
 }
 function wireAuth(){
   const em=document.getElementById("authemail"), pw=document.getElementById("authpw");
@@ -835,21 +842,19 @@ function wireAuth(){
   const st=document.getElementById("authstatus");
   if(!login) return;
   login.onclick=async()=>{
-    if(!sb){ st.textContent="Sync nicht verfügbar."; return; }
     st.textContent="Melde an …";
-    const { data, error } = await sb.auth.signInWithPassword({ email:(em.value||"").trim(), password:pw.value||"" });
-    if(error){ st.textContent="✗ "+error.message; return; }
-    sbUser=data.user; pw.value=""; await syncFactsFromDB(); updateAuthUI();
+    try{ const d=await sbAuth("token?grant_type=password",{ email:(em.value||"").trim(), password:pw.value||"" });
+      sbSetSession(d); pw.value=""; updateAuthUI(); await syncFactsFromDB();
+    }catch(e){ st.textContent="✗ "+e.message; }
   };
   signup.onclick=async()=>{
-    if(!sb){ st.textContent="Sync nicht verfügbar."; return; }
     st.textContent="Erstelle Konto …";
-    const { data, error } = await sb.auth.signUp({ email:(em.value||"").trim(), password:pw.value||"" });
-    if(error){ st.textContent="✗ "+error.message; return; }
-    if(data.session){ sbUser=data.user; pw.value=""; await syncFactsFromDB(); updateAuthUI(); }
-    else { st.textContent="Konto erstellt. Jetzt „Anmelden“ tippen."; }
+    try{ const d=await sbAuth("signup",{ email:(em.value||"").trim(), password:pw.value||"" });
+      if(d.access_token){ sbSetSession(d); pw.value=""; updateAuthUI(); await syncFactsFromDB(); }
+      else { st.textContent="Konto erstellt. Jetzt „Anmelden“ tippen."; }
+    }catch(e){ st.textContent="✗ "+e.message; }
   };
-  logout.onclick=async()=>{ try{ await sb.auth.signOut(); }catch(e){} sbUser=null; updateAuthUI(); };
+  logout.onclick=()=>{ sbClear(); updateAuthUI(); };
 }
 
 function updateMemUI(){
@@ -988,7 +993,7 @@ function addFacts(arr){
   (arr||[]).forEach(f=>{ f=(f||"").trim();
     if(f && f.length<220 && !memFacts.some(x=>x.toLowerCase()===f.toLowerCase())){ memFacts.push(f); added.push(f); } });
   if(added.length){ saveMem(); updateMemUI();
-    if(sb && sbUser){ added.forEach(f=>{ try{ sb.from("facts").insert({ text:f }).then(()=>{},()=>{}); }catch(e){} }); }
+    if(sbUser){ added.forEach(f=>dbInsertFact(f)); }
   }
 }
 function processReply(t){
@@ -1179,8 +1184,7 @@ setTimeout(()=>{
 
 const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused(!paused);
 
-initSB(); wireAuth(); updateAuthUI(); sbRefreshSession();
-if(sb && sb.auth && sb.auth.onAuthStateChange){ try{ sb.auth.onAuthStateChange((_e,session)=>{ sbUser=session?session.user:null; updateAuthUI(); if(sbUser) syncFactsFromDB(); }); }catch(e){} }
+wireAuth(); updateAuthUI(); sbRefreshSession();
 
 
 /* Chat senden */
@@ -1205,7 +1209,7 @@ if(sb && sb.auth && sb.auth.onAuthStateChange){ try{ sb.auth.onAuthStateChange((
     anthKey=""; store.set("anthKey",""); document.getElementById("anthkeyinput").value=""; stat();
   };
   const mr=document.getElementById("memreset");
-  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); if(sb&&sbUser){ try{ sb.from("facts").delete().eq("user_id",sbUser.id).then(()=>{},()=>{}); }catch(e){} } } };
+  if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memFacts=[]; saveMem(); updateMemUI(); if(sbUser){ dbDeleteAll(); } } };
   const mb=document.getElementById("membackup");
   if(mb) mb.onclick=()=>{
     const data={ v:1, exported:new Date().toISOString(), memFacts:memFacts, elKey:elKey, anthKey:anthKey, voiceOn:voiceOn };
@@ -1222,7 +1226,7 @@ if(sb && sb.auth && sb.auth.onAuthStateChange){ try{ sb.auth.onAuthStateChange((
       const rd=new FileReader();
       rd.onload=()=>{ try{
         const d=JSON.parse(rd.result);
-        if(Array.isArray(d.memFacts)){ memFacts=d.memFacts.slice(); saveMem(); updateMemUI(); if(sb&&sbUser) pushAllFactsReplace(); }
+        if(Array.isArray(d.memFacts)){ memFacts=d.memFacts.slice(); saveMem(); updateMemUI(); if(sbUser) pushAllFactsReplace(); }
         if(typeof d.elKey==="string"){ elKey=d.elKey; store.set("elKey",elKey); }
         if(typeof d.anthKey==="string"){ anthKey=d.anthKey; store.set("anthKey",anthKey); document.getElementById("anthkeyinput").value=anthKey; }
         if(typeof d.voiceOn==="boolean"){ voiceOn=d.voiceOn; store.set("voiceOn",voiceOn?"1":"0"); }
@@ -1242,7 +1246,11 @@ if(sb && sb.auth && sb.auth.onAuthStateChange){ try{ sb.auth.onAuthStateChange((
   };
 })();
 
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(()=>{}); }
+if("serviceWorker" in navigator){
+  navigator.serviceWorker.register("sw.js").then(reg=>{ try{ reg.update(); }catch(e){} }).catch(()=>{});
+  let _refreshed=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(_refreshed) return; _refreshed=true; location.reload(); });
+}
 
 /* ===== Studio-Stimmen: Einstellungen ===== */
 const settingsEl=document.getElementById("settings");
