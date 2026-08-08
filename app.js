@@ -147,27 +147,24 @@ const SCRIPTS = {
   },
   team: {
     isTeam:true,
-    parts:["viktor","mara","deniz"],
+    parts:["viktor","deniz","mara","lena"],
     intro:[
-      ["sys","Team-Runde · Belastung nächste Woche · du hörst live mit"],
-      ["viktor","Zur Sache: Marcos Kraftwerte steigen seit sechs Wochen stabil, der Rekord gestern bestätigt den Trend. Ich schlage vor, nächste Woche einen Intensivierungsblock zu fahren — vier Einheiten statt drei."],
-      ["mara","Und ich schlage vor, dass wir erst auf den Menschen schauen statt auf die Kurve. Recovery heute: 64 Prozent. Schlaf unter sechs Stunden, dazu eine volle Arbeitswoche. Das ist kein Fundament für einen Block, Viktor."],
-      ["viktor","Der Zeitpunkt ist günstig — Momentum ist real. Wer im Aufwind nicht steigert, verschenkt Anpassung."],
-      ["mara","Und wer im Sturm das Segel vergrößert, kentert. Momentum nützt nichts, wenn der Körper die Rechnung schreibt. Ein einziger schlechter Block kostet mehr als eine ruhige Woche je kosten würde."],
-      ["deniz","Wenn ich kurz darf — ich seh's in den Daten: Die Leistung kommt, aber die Erholungswerte werden seit zehn Tagen langsam schlechter. Beides ist wahr."],
-      ["viktor","Gut. Dann der Mittelweg: Wir halten drei Einheiten, aber gestalten eine davon intensiver — und koppeln das an eine Bedingung: Recovery im Wochenschnitt über 70 Prozent, sonst fällt die Intensivierung."],
-      ["mara","Damit kann ich leben. Eine Bedingung noch: Der Sonntag bleibt komplett frei. Kein Training, keine Optimierung, nichts."],
-      ["viktor","Einverstanden. Marco — das ist unsere Empfehlung: drei Einheiten, eine davon intensiv, gekoppelt an deine Erholung, Sonntag frei. Das letzte Wort hast du."],
+      ["sys","Team-Runde · Belastung nächste Woche · du hörst mit"],
+      ["viktor","Kurz zur Lage: Marcos Kraftwerte steigen seit sechs Wochen stabil. Frage an die Runde — wie belasten wir nächste Woche, ohne zu überziehen? Offen und fair, wir suchen den besten Weg."],
+      ["deniz","Ich sehe Luft für etwas mehr Intensität — aber nur, wenn die Erholung mitspielt. Nicht stur mehr, sondern klug mehr."],
+      ["mara","Da bin ich ganz bei Deniz: die Richtung stimmt, das Tempo muss zu Marcos Erholung passen. Ein fester freier Tag als Anker wäre mir wichtig."],
+      ["lena","Und die Energie fange ich über die Ernährung ab — an intensiveren Tagen einfach etwas mehr Kohlenhydrate, dann trägt der Körper das gut mit."],
+      ["viktor","Klingt nach Konsens: drei Einheiten, eine davon intensiver, gekoppelt an die Erholung, plus ein fester Ruhetag. Sind alle einverstanden?"],
+      ["deniz","Von mir ein klares Ja."],
+      ["mara","Auch von mir — so fühlt es sich rund an."],
     ],
     chips:[
       { t:"✓ Empfehlung annehmen", next:"accept" },
-      { t:"Ich will den vollen Block.", next:"full" },
+      { t:"Lieber ganz ruhig nächste Woche", next:"calm" },
     ],
     branches:{
-      accept:{ m:[["sys","Entscheidung gespeichert → Logbuch · Deniz plant die Woche entsprechend"],["viktor","Gute Entscheidung. So gewinnt man auf Dauer."],["mara","Und der Sonntag gehört dir."]], chips:[] },
-      full:{ m:[["mara","Dein gutes Recht — es ist dein Training. Dann wenigstens mit Sicherheitsnetz: Elias checkt täglich rein, und wenn die Recovery zwei Tage unter 60 fällt, brechen wir ab. Deal?"]],
-        chips:[{ t:"Deal.", next:"full2" }] },
-      full2:{ m:[["sys","Entscheidung gespeichert → Logbuch · Abbruch bei Recovery unter 60 an zwei Tagen"],["viktor","So machen wir's. Mutig, aber mit Leitplanken — das respektiere ich."]], chips:[] },
+      accept:{ m:[["sys","Entscheidung gespeichert → Logbuch"],["viktor","So machen wir's — gemeinsam getragen."],["mara","Und der Ruhetag steht."]], chips:[] },
+      calm:{ m:[["mara","Auch eine schöne Entscheidung — Erholung ist nie verschenkt."],["deniz","Passt, dann sammeln wir Kraft für die Woche drauf. Voll dabei."],["sys","Entscheidung gespeichert → Logbuch · ruhige Woche"]], chips:[] },
     },
   },
 };
@@ -365,6 +362,20 @@ function initGL(){
   const aura=document.getElementById("bg-aura"); if(aura) aura.style.display="none";
 }
 applyMood(); startParallax(); initGL(); loadAvatars();
+(function(){
+  const intro=document.getElementById("intro"); if(!intro) return;
+  const ring=intro.querySelector(".ring");
+  ORDER.forEach((id,i)=>{
+    const a=Math.PI/2 - i*Math.PI/3, R=44;
+    const dt=document.createElement("div"); dt.className="d";
+    dt.style.background=COACHES[id].hex;
+    dt.style.left=(60+Math.cos(a)*R-11).toFixed(1)+"px";
+    dt.style.top=(60-Math.sin(a)*R-11).toFixed(1)+"px";
+    dt.style.animationDelay=(0.15+i*0.09)+"s";
+    ring.appendChild(dt);
+  });
+  setTimeout(()=>{ intro.classList.add("hidden"); }, 2500);
+})();
 
 const AUDIO_CACHE="coach-audio-v1";
 function cacheKeyURL(coachId, clean){
@@ -480,6 +491,7 @@ function openCall(id){
     tr.innerHTML=rowIds.map(cid=>`<div class="orb" data-c="${cid}" style="${orbStyle(cid)}">${avatarInner(cid)}</div>`).join("");
   }
   setSpeaker(isTeam?"viktor":id, true);
+  call.classList.toggle("teammode", isTeam);
   call.classList.add("open");
   if(isTeam){ const t=++seqToken; runSequence(currentScript.intro, ()=>showChips(currentScript.chips), t); }
   else if(liveMode){ enterLive(id); }
@@ -557,12 +569,18 @@ function runSequence(msgs, done, token, i=0){
     setTimeout(()=>runSequence(msgs,done,token,i+1), 900);
     return;
   }
-  addOldify();
+  if(!isTeam) addOldify();
   setSpeaker(who);
   const c=COACHES[who];
   const words=text.split(" ");
-  const line=el(`<div class="tline">${isTeam?`<span class="twho" style="color:${c.hex}">${c.name}</span>`:""}${
-    words.map(w=>`<span class="w">${esc(w)}</span>`).join(" ")}</div>`);
+  const wspans=words.map(w=>`<span class="w">${esc(w)}</span>`).join(" ");
+  let line;
+  if(isTeam){
+    line=el(`<div class="grow"><div class="gav" style="background:${c.hex}">${avatarInner(who)}</div>`+
+      `<div class="gbub"><div class="gname" style="color:${c.hex}">${c.name}</div><div class="gtext">${wspans}</div></div></div>`);
+  } else {
+    line=el(`<div class="tline">${wspans}</div>`);
+  }
   log.appendChild(line); log.scrollTop=log.scrollHeight;
   const spans=line.querySelectorAll(".w");
   let per=Math.max(60, estMs(text,c.rate)/words.length);
@@ -662,7 +680,7 @@ function orbitLoop(nowT){
     const ang=Math.PI/2+i*Math.PI/3+t*OW+dragSpin+mouseSpin;
     const z=Math.sin(ang), f=(z+1)/2;
     const x=OCX+Math.cos(ang)*ORX*sp, y=OCY+Math.sin(ang)*ORY*sp;
-    const sc=(.72+.42*f)*(.3+.7*Math.min(1,pe*1.15));
+    const sc=(.56+.72*f)*(.3+.7*Math.min(1,pe*1.15));
     o.style.left=(x-38).toFixed(1)+"px";
     o.style.top=(y-38).toFixed(1)+"px";
     o.style.transform="scale("+sc.toFixed(3)+")";
@@ -826,31 +844,31 @@ function setPickerSelection(ids){
 const SESSION_TOPICS={
   marathon:{
     title:"Marathon im Herbst",
-    opener:["viktor","Marco hat ein Thema mitgebracht: Er überlegt, im Herbst einen Marathon zu laufen. Zehn Wochen Vorbereitung. Ich will ehrliche Einschätzungen."],
+    opener:["viktor","Marco hat ein Thema mitgebracht: im Herbst einen Marathon laufen, zehn Wochen Vorbereitung. Lasst uns offen und fair draufschauen — wir suchen gemeinsam den besten Weg für ihn, nicht wer recht hat."],
     statements:{
-      deniz:"Ich liebe die Idee! Aber ehrlich: Zehn Wochen von null auf Marathon ist grenzwertig. Das Kraft-Fundament ist top, die Ausdauerbasis nicht. Machbar: Halbmarathon im Herbst, der volle im Frühjahr.",
-      lena:"Ernährungsseitig kriegen wir das hin — Laufumfänge heißen mehr Kohlenhydrate. Beim vollen Marathon in zehn Wochen sehe ich aber ein Energiedefizit-Risiko.",
-      peter:"Aus Karrieresicht: Der Herbst ist deine dichteste Kundenphase. Ein Frühjahrslauf nimmt dir Druck raus, statt welchen draufzupacken.",
-      elias:"Mir ist wichtig, warum du das willst. Ein echtes Herzensziel trägt durch harte Wochen. Beweis-Druck wird zur Belastung. Das würde ich vorher klären.",
-      mara:"Ich bin nicht gegen den Traum — ich bin gegen den Termin. Ein Frühjahrs-Marathon lässt dich ankommen statt hetzen."
+      deniz:"Sportlich ehrlich: zehn Wochen auf einen ganzen Marathon ist sehr ambitioniert. Das Kraftfundament ist top, die Ausdauerbasis noch nicht. Ein Halbmarathon im Herbst wäre ein starkes, realistisches Etappenziel.",
+      lena:"Da schließe ich mich an — ernährungsseitig ist beides machbar, aber beim vollen Marathon in so kurzer Zeit sehe ich ein Energiedefizit-Risiko. Für einen Halbmarathon passt das locker.",
+      peter:"Und der Kalender spricht dafür: Der Herbst ist Marcos dichteste Kundenphase. Ein Etappenziel jetzt, der volle Lauf im Frühjahr, nimmt Druck raus statt welchen draufzupacken.",
+      elias:"Für mich zählt vor allem das Warum. Ist es ein echtes Herzensziel, trägt das. Ein Zwischenziel im Herbst hält die Motivation hoch, ohne zu überfordern — das fühlt sich stimmig an.",
+      mara:"Ich höre da längst einen Konsens: nicht gegen den Traum, sondern für einen Weg, der ankommt statt hetzt. Halbmarathon im Herbst, der volle im Frühjahr — dahinter kann ich voll stehen."
     },
-    closer:["viktor","Danke euch. Marco — du hast die Perspektiven gehört. Dein Wort."],
+    closer:["viktor","Dann sind wir uns einig: gemeinsame Empfehlung ist Halbmarathon im Herbst als Etappe, voller Marathon im Frühjahr mit sauberem Aufbau. Marco — dein Wort zählt am Ende."],
     decisions:[
-      { t:"✓ Halbmarathon im Herbst", sys:"Entscheidung gespeichert → Logbuch · Halbmarathon-Plan folgt", ack:"Starke Wahl. Das wird richtig gut." },
-      { t:"✓ Voller Marathon — mit Leitplanken", sys:"Entscheidung gespeichert → Logbuch · wöchentlicher Check-in als Leitplanke", ack:"Mutig. Wir stehen hinter dir — mit offenen Augen." }
+      { t:"✓ So machen wir's", sys:"Entscheidung gespeichert → Logbuch · Halbmarathon-Plan folgt", ack:"Schön, gemeinsam getragen. Das wird richtig gut." },
+      { t:"Ich will den vollen im Herbst", sys:"Entscheidung gespeichert → Logbuch · voller Marathon mit wöchentlichem Check-in", ack:"Verstanden — dann mit Leitplanken, und wir stehen alle hinter dir." }
     ]
   },
   energy:{
     title:"Mehr Energie am Nachmittag",
-    opener:["viktor","Marcos Thema heute: das Nachmittagstief gegen 15 Uhr. Jeder aus seiner Sicht — was ist der Hebel?"],
+    opener:["viktor","Marcos Thema: das Nachmittagstief gegen 15 Uhr. Offene Runde — jeder Blickwinkel, dann bündeln wir es zu einem klaren, gemeinsamen Plan."],
     statements:{
-      lena:"Meist ist es das Mittagessen: zu schwer, zu viele schnelle Kohlenhydrate. Ich würde auf einen proteinlastigen Lunch umstellen, dazu ein kleiner Snack gegen halb vier.",
-      deniz:"Bevor du zum Kaffee greifst: zehn Minuten Bewegung um halb drei — Spaziergang oder zwanzig Kniebeugen. Kreislauf schlägt Koffein.",
-      elias:"Das Tief ist oft mental, nicht körperlich: Nach Stunden ohne echte Pause macht der Kopf zu. Neunzig-Minuten-Blöcke mit echten Pausen — nicht Handy-Pausen.",
-      peter:"Kalenderarchitektur: Deep Work vormittags, Meetings und Routinearbeit nach 15 Uhr. Dann fällt das Tief in die Aufgaben, die es verträgt.",
-      mara:"Oder die unbequeme Frage: Vielleicht will der Nachmittag dir was sagen. Nicht jede Delle muss wegoptimiert werden — manchmal ist weniger reinpacken die Antwort."
+      lena:"Oft ist es das Mittagessen: zu schwer, zu viele schnelle Kohlenhydrate. Ich würde auf einen proteinlastigen Lunch umstellen, dazu ein kleiner Snack gegen halb vier.",
+      deniz:"Das passt gut dazu — und ergänzend: zehn Minuten Bewegung um halb drei, bevor der Kaffee kommt. Kreislauf schlägt Koffein.",
+      elias:"Beides stimmt, und oft ist das Tief auch mental: nach Stunden ohne echte Pause macht der Kopf zu. Echte Kurzpausen, kein Handy — das trägt den Rest mit.",
+      peter:"Sehe ich genauso. Über den Kalender lässt sich das absichern: schwere Denkarbeit vormittags, Routine und Meetings nach 15 Uhr. Dann fällt das Tief in Aufgaben, die es verkraften.",
+      mara:"Und als Ergänzung, kein Widerspruch: nicht jede Delle muss weg. Wenn all das zusammenkommt, darf auch mal ein Gang runter drin sein."
     },
-    closer:["viktor","Gute Runde. Nimm dir zwei Hebel raus und teste sie zwei Wochen — dann schauen wir gemeinsam auf die Wirkung."],
+    closer:["viktor","Schön, das greift ineinander: leichteres Mittagessen, ein Bewegungsimpuls, echte Pausen, schwere Aufgaben in den Vormittag — und die Erlaubnis, auch mal weniger zu wollen. Ein gemeinsamer Plan, kein Streit. Nimm dir zwei Hebel und teste sie zwei Wochen."],
     decisions:[
       { t:"✓ Plan übernehmen", sys:"Entscheidung gespeichert → Logbuch · Zwei-Wochen-Test startet morgen", ack:"Sehr gut — wir begleiten dich dabei." }
     ]
@@ -904,9 +922,15 @@ function addFacts(arr){
   if(ch){ saveMem(); updateMemUI(); }
 }
 function processReply(t){
+  let str=(t||"");
   const facts=[];
-  const clean=(t||"").replace(/<\s*remember\s*>([\s\S]*?)<\s*\/\s*remember\s*>/gi,(m,p)=>{ facts.push(p); return " "; })
-    .replace(/\s{2,}/g," ").trim();
+  // vollständige remember-Blöcke: Fakt merken, aus Anzeige entfernen
+  str=str.replace(/<\s*remember\s*>([\s\S]*?)<\s*\/\s*remember\s*>/gi,(m,p)=>{ if(p.trim()) facts.push(p.trim()); return " "; });
+  // abgeschnittener remember-Tag am Ende (Truncation): nur entfernen, NICHT als Fakt speichern
+  str=str.replace(/<\s*remember\s*>[\s\S]*$/i," ");
+  // etwaige lose Tag-Fragmente
+  str=str.replace(/<\/?\s*remember\s*>/gi," ").replace(/<\/?\s*rem[a-z]*$/i," ");
+  const clean=str.replace(/\s{2,}/g," ").trim();
   return { clean:clean||"…", facts };
 }
 function memoryBlock(){
@@ -941,7 +965,7 @@ function askClaude(id, history, key){
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":key||anthKey,
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:320, system:systemPrompt(id), messages:history })
+    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:640, system:systemPrompt(id), messages:history })
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
     .then(d=>{ const parts=(d.content||[]).filter(x=>x.type==="text").map(x=>x.text); return (parts.join(" ")||"…").trim(); });
 }
@@ -1049,6 +1073,9 @@ function renderStaticOrbs(){
   if(vv){ vv.setAttribute("style",orbStyle("viktor")); vv.classList.toggle("hasimg",!!AVOK.viktor); vv.innerHTML=avatarInner("viktor"); }
   const vm=document.getElementById("vsmara");
   if(vm){ vm.setAttribute("style",orbStyle("mara")); vm.classList.toggle("hasimg",!!AVOK.mara); vm.innerHTML=avatarInner("mara"); }
+  const pv=document.getElementById("prevorbs");
+  if(pv){ pv.innerHTML=["viktor","deniz","mara","lena"].map((id,i)=>
+    '<div class="orb '+(AVOK[id]?"hasimg":"")+'" style="width:38px;height:38px;font-size:13px;'+(i?"margin-left:-10px;":"")+"border:2px solid #fff;"+orbStyle(id)+'">'+avatarInner(id)+'</div>').join(""); }
 }
 var _tr=document.getElementById("teaser-runde"); if(_tr) _tr.onclick=()=>showView("runde");
 document.getElementById("lobbyplay").onclick=()=>openCall("team");

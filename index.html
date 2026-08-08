@@ -73,6 +73,24 @@ h1{font-family:var(--serif);font-weight:600;font-size:30px;
 .view{display:none}
 .view.active{display:block;animation:fade .3s ease}
 .sec{margin-top:34px}
+#call.teammode #callcenter{display:none}
+#call.teammode #transcript{padding-top:12px;gap:12px}
+.grow{display:flex;gap:9px;align-items:flex-start;animation:fade .3s;max-width:100%}
+.grow .gav{width:36px;height:36px;border-radius:50%;overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.14)}
+.grow .gav img{width:100%;height:100%;object-fit:cover}
+.grow .gbub{background:#fff;border:1px solid var(--line);border-radius:16px;border-top-left-radius:5px;padding:8px 12px;box-shadow:var(--soft);max-width:84%}
+.grow .gname{font-size:11px;font-weight:700;margin-bottom:2px;letter-spacing:.02em}
+.grow .gtext{font-size:14.5px;line-height:1.5;color:var(--text)}
+.grow .gtext .w{opacity:0;transition:opacity .18s}
+.grow .gtext .w.on{opacity:1}
+#intro{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;animation:introout .55s ease 1.95s forwards}
+#intro.hidden{display:none}
+@keyframes introout{to{opacity:0;visibility:hidden}}
+#intro .ring{position:relative;width:120px;height:120px;animation:introspin 2.1s cubic-bezier(.2,.8,.2,1)}
+@keyframes introspin{from{transform:rotate(-55deg) scale(.8)}to{transform:rotate(0) scale(1)}}
+#intro .d{position:absolute;width:22px;height:22px;border-radius:50%;opacity:0;animation:introdot .6s ease forwards;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+@keyframes introdot{to{opacity:1}}
+#intro .ititle{font-family:var(--serif);font-weight:600;font-size:24px;letter-spacing:-.01em;color:var(--text);opacity:0;animation:fade .6s ease .6s forwards}
 #homehero{min-height:calc(100svh - 150px);display:flex;flex-direction:column;align-items:center;justify-content:center}
 #scrollcue{font-size:11px;letter-spacing:.14em;color:var(--text3);margin-top:20px;animation:cue 1.9s ease-in-out infinite}
 @keyframes cue{0%,100%{transform:translateY(0);opacity:.5}50%{transform:translateY(4px);opacity:1}}
@@ -175,7 +193,8 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 .hint{font-size:12.5px;color:var(--text2);line-height:1.6;background:var(--panel);border:1px solid var(--line);
   border-radius:16px;padding:12px 14px;margin-top:12px;box-shadow:var(--soft)}
 .quiet{display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;color:var(--text3);margin-top:40px}
-#pills{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:0;right:0;z-index:40;display:flex;justify-content:center;pointer-events:none}
+#pills{position:fixed;bottom:0;left:0;right:0;z-index:40;display:flex;justify-content:center;pointer-events:none;
+  padding:12px 0 calc(8px + env(safe-area-inset-bottom));background:linear-gradient(to top, var(--bg) 58%, rgba(245,245,247,0))}
 #pills .inner{pointer-events:auto;display:flex;gap:4px;background:rgba(255,255,255,.72);box-shadow:var(--soft);
   backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
   border:1px solid var(--line2);border-radius:99px;padding:5px}
@@ -291,19 +310,10 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="sectitle" style="margin-top:6px">Team-Runde</div>
     <div class="secsub">Zwei Meinungen. Eine Empfehlung. Dein Wort.</div>
 
-    <h2 class="fx fx-up">So sieht eine Team-Runde aus · Beispiel</h2>
-    <div class="vs">
-      <div class="vscard fx fx-left" style="--d:.1s">
-        <div class="orb" id="vsviktor"></div>
-        <div class="vq">„Momentum nutzen. Intensivieren.“</div>
-        <div class="vn">Viktor</div>
-      </div>
-      <div class="vsbadge fx fx-pop" style="--d:.4s">VS</div>
-      <div class="vscard fx fx-right" style="--d:.1s">
-        <div class="orb" id="vsmara"></div>
-        <div class="vq">„Erst erholen. Sonntag bleibt frei.“</div>
-        <div class="vn">Mara</div>
-      </div>
+    <h2 class="fx fx-up">Team-Runde · Beispiel</h2>
+    <div class="glass fx fx-up" style="--d:.1s;display:flex;gap:12px;align-items:center">
+      <div id="prevorbs" style="display:flex"></div>
+      <div style="flex:1;font-size:13px;color:var(--text2);line-height:1.5">Deine Coaches besprechen ein Thema gemeinsam — offen, fair, bis ein Konsens steht.</div>
     </div>
 
     <div class="glass fx fx-up" style="--d:.5s;padding:16px">
@@ -371,7 +381,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 24</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 25</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -460,6 +470,8 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     </div>
   </div>
 </div>
+
+<div id="intro"><div class="ring"></div><div class="ititle">Mein Team</div></div>
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
