@@ -237,44 +237,33 @@ function unlockAudio(){
   if(audioUnlocked) return; audioUnlocked=true;
   try{ player.src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
     player.play().catch(()=>{}); }catch(e){}
-  initGraph();
   try{ if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission==="function"){
     DeviceOrientationEvent.requestPermission().then(st=>{ if(st==="granted") attachTilt(); }).catch(()=>{});
   } }catch(e){}
 }
 document.addEventListener("pointerdown", unlockAudio, { once:true, capture:true });
 
-/* ---- Audio-reaktive Aura ---- */
-let actx=null,analyser=null,ampData=null,ampRaf=null;
-function initGraph(){
-  if(actx || !(window.AudioContext||window.webkitAudioContext)) return;
-  try{
-    actx=new (window.AudioContext||window.webkitAudioContext)();
-    const src=actx.createMediaElementSource(player);
-    analyser=actx.createAnalyser(); analyser.fftSize=64;
-    src.connect(analyser); analyser.connect(actx.destination);
-    ampData=new Uint8Array(analyser.frequencyBinCount);
-  }catch(e){ analyser=null; }
-}
-function startAmp(){
-  if(!analyser) return;
-  if(actx&&actx.state==="suspended") actx.resume().catch(()=>{});
-  stopAmp();
-  const vr=document.getElementById("voicering"), orb=document.getElementById("bigorb");
-  const loop=()=>{
-    if(!callOpen){ stopAmp(); return; }
-    analyser.getByteFrequencyData(ampData);
-    let sum=0; for(let i=0;i<ampData.length;i++) sum+=ampData[i];
-    const amp=Math.min(1,(sum/ampData.length/255)*2.4);
-    if(vr){ vr.style.opacity=(amp*.9).toFixed(2); vr.style.transform="scale("+(1+amp*.45).toFixed(3)+")"; vr.style.borderColor=curHex; }
-    if(orb) orb.style.boxShadow="0 6px "+(22+amp*60).toFixed(0)+"px "+curHex+"55, 0 3px 12px rgba(0,0,0,.12)";
-    ampRaf=requestAnimationFrame(loop);
+/* ---- Sprech-reaktive Aura (synthetisch, KEIN Web-Audio-Routing → iOS-Lautstärke/Stumm bleibt aktiv) ---- */
+let speakingNow=false, auraRaf=null;
+function startAura(){
+  stopAura();
+  const t0=performance.now();
+  const loop=(now)=>{
+    if(!callOpen || !speakingNow){ stopAura(); return; }
+    const t=(now-t0)/1000;
+    const env=Math.abs(0.55*Math.sin(t*7.3)+0.45*Math.sin(t*12.9+1.1));
+    const amp=Math.min(1,Math.max(.12,.3+.7*env));
+    const vr=document.getElementById("voicering"), orb=document.getElementById("bigorb");
+    if(vr){ vr.style.opacity=(amp*.85).toFixed(2); vr.style.transform="scale("+(1+amp*.4).toFixed(3)+")"; vr.style.borderColor=curHex; }
+    if(orb) orb.style.boxShadow="0 6px "+(22+amp*55).toFixed(0)+"px "+curHex+"55, 0 3px 12px rgba(0,0,0,.12)";
+    auraRaf=requestAnimationFrame(loop);
   };
-  ampRaf=requestAnimationFrame(loop);
+  auraRaf=requestAnimationFrame(loop);
 }
-function stopAmp(){
-  if(ampRaf){ cancelAnimationFrame(ampRaf); ampRaf=null; }
+function stopAura(){
+  if(auraRaf){ cancelAnimationFrame(auraRaf); auraRaf=null; }
   const vr=document.getElementById("voicering"); if(vr) vr.style.opacity="0";
+  const orb=document.getElementById("bigorb"); if(orb) orb.style.boxShadow="";
 }
 
 /* ---- Gyro-/Maus-Parallax ---- */
@@ -410,7 +399,7 @@ function speakStudio(coachId, clean, onDur){
       player.onended=()=>res();
       player.onerror=()=>rej(new Error("audio"));
       document.getElementById("call").classList.add("live");
-      player.play().then(()=>startAmp()).catch(rej);
+      player.play().then(()=>{}).catch(rej);
     };
     getCachedAudio(coachId,clean).then(cached=>{
       if(cached){ start(cached); return; }
@@ -527,7 +516,7 @@ function closeCall(){
   document.getElementById("call").classList.remove("speaking");
   if(window.speechSynthesis) speechSynthesis.cancel();
   try{ player.pause(); player.currentTime=0; }catch(e){}
-  stopAmp(); document.getElementById("call").classList.remove("live");
+  speakingNow=false; stopAura(); document.getElementById("call").classList.remove("live");
   liveMode=false; const _cb2=document.getElementById("chatbar"); if(_cb2) _cb2.style.display="none";
 }
 function setSpeaker(id, instant){
@@ -560,6 +549,8 @@ function setSpeakingUI(on, id){
     : `hört zu`;
   if(on && id){ const c=COACHES[id];
     document.querySelectorAll(".eq i").forEach(i=>i.style.background=c.hex); }
+  speakingNow=on;
+  if(on) startAura(); else stopAura();
 }
 function addOldify(){
   document.querySelectorAll("#transcript .tline:not(.old)").forEach(n=>n.classList.add("old"));
@@ -1187,42 +1178,51 @@ async function streamClaude(id, history, onDelta){
   }
   return full;
 }
-/* v30: 1:1-Antwort live streamen, sonst Fallback auf Non-Streaming */
+/* v31: Text im Sprechtakt enthüllen — Wörter erscheinen synchron zur Stimme, nicht davor */
+function revealSynced(id, clean, token, typ){
+  const log=document.getElementById("transcript");
+  const words=clean.split(" ");
+  let line=null, spans=null, wi=0, rev=null, started=false;
+  const stop=()=>{ if(rev){ clearInterval(rev); rev=null; } };
+  const finishAll=()=>{ stop(); if(spans) spans.forEach(s=>s.classList.add("on")); };
+  const beginReveal=(ms)=>{
+    if(token!==seqToken || started) return; started=true;
+    try{ if(typ) typ.remove(); }catch(e){}
+    setSpeakingUI(true, id);                    // Atmen/Aura/„spricht" genau ab Sprechbeginn
+    line=el('<div class="tline">'+words.map(w=>'<span class="w">'+esc(w)+'</span>').join(" ")+'</div>');
+    log.appendChild(line); spans=line.querySelectorAll(".w"); log.scrollTop=log.scrollHeight;
+    const per=Math.max(45,(ms*0.94)/Math.max(1,words.length));
+    rev=setInterval(()=>{
+      if(token!==seqToken){ stop(); return; }
+      if(wi<spans.length){ spans[wi++].classList.add("on"); log.scrollTop=log.scrollHeight; }
+      else stop();
+    }, per);
+  };
+  return speak(id, clean, (ms)=>beginReveal(ms)).then(()=>{
+    if(token!==seqToken) return;
+    if(!started) beginReveal(estMs(clean,COACHES[id].rate));
+    finishAll(); setSpeakingUI(false);
+  }).catch(()=>{
+    if(token!==seqToken) return;
+    if(!started) beginReveal(estMs(clean,COACHES[id].rate));
+    finishAll(); setSpeakingUI(false);
+  });
+}
+/* v31: 1:1-Antwort holen, dann im Sprechtakt zeigen */
 function streamCoach(id, token){
   const log=document.getElementById("transcript");
   if(!isTeam) addOldify();
   setSpeaker(id);
-  setSpeakingUI(true, id);
   const typ=el('<div class="tsys">'+COACHES[id].name+' denkt nach …</div>');
   log.appendChild(typ); log.scrollTop=log.scrollHeight;
-  let line=null, lastVis="";
-  const onDelta=(fullRaw)=>{
-    if(token!==seqToken) return;
-    const vis=visiblePart(fullRaw).replace(/\s{2,}/g," ").replace(/^\s+/,"");
-    if(!vis) return;
-    if(!line){ try{ typ.remove(); }catch(e){} line=el('<div class="tline"></div>'); log.appendChild(line); }
-    if(vis!==lastVis){ lastVis=vis; line.textContent=vis; log.scrollTop=log.scrollHeight; }
-  };
-  return streamClaude(id, convHistory, onDelta).then(fullRaw=>{
-    if(token!==seqToken) return;
-    try{ typ.remove(); }catch(e){}
-    const pr=processReply(fullRaw); addFacts(pr.facts);
+  return askClaude(id, convHistory).then(r=>{
+    if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
+    const pr=processReply(r); addFacts(pr.facts);
     convHistory.push({ role:"assistant", content:pr.clean });
-    if(!line){ line=el('<div class="tline"></div>'); log.appendChild(line); }
-    line.textContent=pr.clean; log.scrollTop=log.scrollHeight;
-    return speak(id, pr.clean).then(()=>{ if(token===seqToken) setSpeakingUI(false); });
-  }).catch(err=>{
-    if(token!==seqToken) return;
-    try{ typ.remove(); }catch(e){}
-    if(line){ try{ line.remove(); }catch(e){} }
-    // Fallback: nicht-streamende Anfrage
-    return askClaude(id, convHistory).then(r=>{
-      if(token!==seqToken) return;
-      const pr=processReply(r); addFacts(pr.facts);
-      convHistory.push({ role:"assistant", content:pr.clean });
-      setSpeakingUI(false);
-      runSequence([[id,pr.clean]], null, token);
-    }).catch(e=>{ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); });
+    return revealSynced(id, pr.clean, token, typ);
+  }).catch(e=>{
+    try{ typ.remove(); }catch(_){}
+    if(token===seqToken){ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); }
   });
 }
 function showChatbar(){
