@@ -517,6 +517,10 @@ function setPaused(p){
   if(!p && resumeFn){ const f=resumeFn; resumeFn=null; f(); }
 }
 function closeCall(){
+  // v29: echtes 1:1-Gespräch vor dem Aufräumen für ein Logbuch-Fazit erfassen
+  const _sumId=liveCoachId, _sumHist=(convHistory||[]).slice();
+  const _realTurns=_sumHist.filter(m=>m.role==="user" && !/Interner Hinweis/.test(m.content||"")).length;
+  if(_sumId && _realTurns>=1){ try{ summarizeConversation(_sumId, _sumHist); }catch(e){} }
   callOpen=false; seqToken++; paused=false; resumeFn=null;
   const b=document.getElementById("pausebtn"); if(b) b.textContent="❚❚";
   document.getElementById("call").classList.remove("open");
@@ -535,6 +539,9 @@ function setSpeaker(id, instant){
   curHex=c.hex;
   document.getElementById("cname").textContent=c.name;
   document.getElementById("crole").textContent=c.role+" · "+c.vibe;
+  const callEl=document.getElementById("call");
+  callEl.style.setProperty("--coach", c.hex);
+  const sendb=document.getElementById("chatsend"); if(sendb) sendb.style.background=c.hex;
   document.getElementById("call-aura").style.background=
     `radial-gradient(620px 480px at 50% 4%, ${c.hex}1f, transparent 66%)`;
   document.querySelectorAll(".ringp").forEach(r=>r.style.setProperty("--ring", c.hex+"88"));
@@ -734,8 +741,25 @@ const ACTIONS=[
   { ico:"🥗", t:"Lena · Speiseplan an Trainingszeit angepasst", time:"heute 07:55 · autonom" },
   { ico:"🤝", t:"Viktor & Mara · Team-Runde „Belastung nächste Woche“ gestartet", time:"gestern 21:40" },
 ];
+function fmtWhen(iso){
+  const d=new Date(iso), now=new Date();
+  const hh=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+  const y=new Date(now.getTime()-864e5);
+  if(d.toDateString()===now.toDateString()) return "heute "+hh;
+  if(d.toDateString()===y.toDateString()) return "gestern "+hh;
+  return d.getDate()+"."+(d.getMonth()+1)+". "+hh;
+}
 function renderLog(){
-  document.getElementById("actionlog").innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch keine Aktionen. Sobald dein Team etwas für dich tut oder vorschlägt, steht es hier — nachvollziehbar und widerrufbar.</div>';
+  const box=document.getElementById("actionlog"); if(!box) return;
+  if(!logEntries.length){
+    box.innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch keine Einträge. Nach jedem Gespräch hält dein Team hier ein kurzes Fazit fest — nur für dich, nachvollziehbar.</div>';
+    return;
+  }
+  box.innerHTML=logEntries.map(e=>{
+    const c=COACHES[e.coach]||COACHES.viktor;
+    return '<div class="logrow"><div class="lr-ico" style="background:'+c.hex+'22;color:'+c.hex+';font-weight:700;font-size:12px">'+c.ini+'</div>'+
+      '<div style="flex:1">'+esc(e.t)+'<div class="lr-t">'+c.name+' · '+fmtWhen(e.d)+'</div></div></div>';
+  }).join("");
 }
 function feedItem(coachId,title,body,time,target){
   const c=COACHES[coachId];
@@ -857,10 +881,25 @@ function wireAuth(){
 
 function updateMemUI(){
   const c=document.getElementById("memcount"); if(c) c.textContent=memFacts.length+" gemerkt";
-  const list=document.getElementById("memlist");
-  if(list) list.innerHTML = memFacts.length
-    ? memFacts.map(f=>'<div class="logrow"><div class="lr-ico">•</div><div>'+esc(f)+'</div></div>').join("")
-    : '<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch nichts gemerkt. Sprich mit einem Coach — was du teilst, landet hier.</div>';
+  const list=document.getElementById("memlist"); if(!list) return;
+  if(!memFacts.length){
+    list.innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch nichts gemerkt. Sprich mit einem Coach — was du teilst, landet hier.</div>';
+    return;
+  }
+  list.innerHTML = memFacts.map((f,i)=>
+    '<div class="logrow" style="align-items:center"><div class="lr-ico">•</div>'+
+    '<div style="flex:1">'+esc(f)+'</div>'+
+    '<button class="memdel" data-i="'+i+'" title="Diesen Fakt vergessen" aria-label="Fakt löschen">✕</button></div>').join("");
+  list.querySelectorAll(".memdel").forEach(b=>{ b.onclick=()=>removeFact(memFacts[+b.dataset.i]); });
+}
+async function dbDeleteFact(text){
+  try{ await fetch(SB_URL+"/rest/v1/facts?user_id=eq."+encodeURIComponent(sbUserId)+"&text=eq."+encodeURIComponent(text),
+    { method:"DELETE", headers:sbHeaders() }); }catch(e){}
+}
+function removeFact(text){
+  const before=memFacts.length;
+  memFacts=memFacts.filter(x=>x!==text);
+  if(memFacts.length!==before){ saveMem(); updateMemUI(); if(sbUser) dbDeleteFact(text); }
 }
 function renderCoachCards(){
   const car=document.getElementById("coachcarousel"); if(!car) return;
@@ -1034,6 +1073,26 @@ function openSession(topicKey){
 let memFacts=[];
 try{ memFacts=JSON.parse(store.get("memFacts")||"[]"); if(!Array.isArray(memFacts)) memFacts=[]; }catch(e){ memFacts=[]; }
 function saveMem(){ store.set("memFacts", JSON.stringify(memFacts)); }
+let logEntries=[];
+try{ logEntries=JSON.parse(store.get("logEntries")||"[]"); if(!Array.isArray(logEntries)) logEntries=[]; }catch(e){ logEntries=[]; }
+function saveLog(){ store.set("logEntries", JSON.stringify(logEntries)); }
+function summarizeConversation(coachId, hist){
+  if(!anthKey || !COACHES[coachId]) return;
+  const convo=(hist||[])
+    .filter(m=>!(m.role==="user" && /Interner Hinweis/.test(m.content||"")))
+    .map(m=>(m.role==="user"?"Marco":COACHES[coachId].name)+": "+m.content).join("\n");
+  if(!convo.trim()) return;
+  const sys="Fasse dieses Coaching-Gespräch für Marcos privates Logbuch in EINER knappen deutschen Zeile zusammen. "+
+    "Format exakt: 'Besprochen: … · Nächster Schritt: …'. Nur diese eine Zeile, keine Anführungszeichen, kein weiterer Text. "+
+    "Wenn kein konkreter nächster Schritt vereinbart wurde, lass diesen Teil weg.";
+  claudeRaw(sys, [{ role:"user", content:convo }], 120).then(line=>{
+    line=(line||"").replace(/^["'„»]+|["'"«»]+$/g,"").trim();
+    if(!line || line.length<4) return;
+    logEntries.unshift({ t:line, d:new Date().toISOString(), coach:coachId });
+    logEntries=logEntries.slice(0,50);
+    saveLog(); renderLog();
+  }).catch(()=>{});
+}
 function addFacts(arr){
   const added=[];
   (arr||[]).forEach(f=>{ f=(f||"").trim();
@@ -1090,6 +1149,82 @@ function askClaude(id, history, key){
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
     .then(d=>{ const parts=(d.content||[]).filter(x=>x.type==="text").map(x=>x.text); return (parts.join(" ")||"…").trim(); });
 }
+/* v30: nur den sichtbaren Teil zeigen — angefangene/fertige <remember>-Tags nie einblenden */
+function visiblePart(raw){
+  const i=(raw||"").search(/<\s*remember/i);
+  let vis = i>=0 ? raw.slice(0,i) : (raw||"");
+  vis = vis.replace(/<\s*\/?\s*r(e(m(e(m(b(e(r)?)?)?)?)?)?)?\s*$/i,""); // angefangenes Tag am Ende zurückhalten
+  return vis;
+}
+/* v30: Streaming über die Anthropic-API (SSE) */
+async function streamClaude(id, history, onDelta){
+  const resp=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{ "content-type":"application/json", "x-api-key":anthKey,
+      "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:640, system:systemPrompt(id), messages:history, stream:true })
+  });
+  if(!resp.ok){ const t=await resp.text(); throw new Error("HTTP "+resp.status+" "+t.slice(0,140)); }
+  if(!resp.body || !resp.body.getReader) throw new Error("no-stream");
+  const reader=resp.body.getReader(), dec=new TextDecoder();
+  let buf="", full="";
+  while(true){
+    const { done, value }=await reader.read();
+    if(done) break;
+    buf+=dec.decode(value,{ stream:true });
+    let nl;
+    while((nl=buf.indexOf("\n"))>=0){
+      const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1);
+      if(!line.startsWith("data:")) continue;
+      const data=line.slice(5).trim();
+      if(!data || data==="[DONE]") continue;
+      try{ const ev=JSON.parse(data);
+        if(ev.type==="content_block_delta" && ev.delta && (ev.delta.type==="text_delta") && ev.delta.text){
+          full+=ev.delta.text; if(onDelta) onDelta(full);
+        }
+      }catch(e){}
+    }
+  }
+  return full;
+}
+/* v30: 1:1-Antwort live streamen, sonst Fallback auf Non-Streaming */
+function streamCoach(id, token){
+  const log=document.getElementById("transcript");
+  if(!isTeam) addOldify();
+  setSpeaker(id);
+  setSpeakingUI(true, id);
+  const typ=el('<div class="tsys">'+COACHES[id].name+' denkt nach …</div>');
+  log.appendChild(typ); log.scrollTop=log.scrollHeight;
+  let line=null, lastVis="";
+  const onDelta=(fullRaw)=>{
+    if(token!==seqToken) return;
+    const vis=visiblePart(fullRaw).replace(/\s{2,}/g," ").replace(/^\s+/,"");
+    if(!vis) return;
+    if(!line){ try{ typ.remove(); }catch(e){} line=el('<div class="tline"></div>'); log.appendChild(line); }
+    if(vis!==lastVis){ lastVis=vis; line.textContent=vis; log.scrollTop=log.scrollHeight; }
+  };
+  return streamClaude(id, convHistory, onDelta).then(fullRaw=>{
+    if(token!==seqToken) return;
+    try{ typ.remove(); }catch(e){}
+    const pr=processReply(fullRaw); addFacts(pr.facts);
+    convHistory.push({ role:"assistant", content:pr.clean });
+    if(!line){ line=el('<div class="tline"></div>'); log.appendChild(line); }
+    line.textContent=pr.clean; log.scrollTop=log.scrollHeight;
+    return speak(id, pr.clean).then(()=>{ if(token===seqToken) setSpeakingUI(false); });
+  }).catch(err=>{
+    if(token!==seqToken) return;
+    try{ typ.remove(); }catch(e){}
+    if(line){ try{ line.remove(); }catch(e){} }
+    // Fallback: nicht-streamende Anfrage
+    return askClaude(id, convHistory).then(r=>{
+      if(token!==seqToken) return;
+      const pr=processReply(r); addFacts(pr.facts);
+      convHistory.push({ role:"assistant", content:pr.clean });
+      setSpeakingUI(false);
+      runSequence([[id,pr.clean]], null, token);
+    }).catch(e=>{ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); });
+  });
+}
 function showChatbar(){
   const bar=document.getElementById("chatbar"); if(bar) bar.style.display="flex";
   const inp=document.getElementById("chatinput"); if(inp) setTimeout(()=>{ try{inp.focus();}catch(e){} },200);
@@ -1105,13 +1240,7 @@ function enterLive(id){
   showChatbar();
   const trigger="(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
   convHistory.push({ role:"user", content:trigger });
-  const typ=coachThinking();
-  askClaude(id, convHistory).then(r=>{
-    typ.remove();
-    const pr=processReply(r); addFacts(pr.facts);
-    convHistory.push({ role:"assistant", content:pr.clean });
-    runSequence([[id,pr.clean]], null, ++seqToken);
-  }).catch(e=>{ typ.remove(); addMsg("sys","⚠︎ "+anthErr(e)); });
+  streamCoach(id, ++seqToken);
 }
 function sendChat(){
   const inp=document.getElementById("chatinput");
@@ -1121,17 +1250,7 @@ function sendChat(){
   const log=document.getElementById("transcript");
   log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
   convHistory.push({ role:"user", content:txt });
-  const typ=el('<div class="tsys">'+COACHES[liveCoachId].name+' denkt nach …</div>');
-  log.appendChild(typ); log.scrollTop=log.scrollHeight;
-  askClaude(liveCoachId, convHistory).then(reply=>{
-    typ.remove();
-    const pr=processReply(reply); addFacts(pr.facts);
-    convHistory.push({ role:"assistant", content:pr.clean });
-    runSequence([[liveCoachId,pr.clean]], null, ++seqToken);
-  }).catch(e=>{
-    typ.remove();
-    addMsg("sys","⚠︎ "+anthErr(e));
-  });
+  streamCoach(liveCoachId, ++seqToken);
 }
 
 /* ===== Start: Tabs + FX-Engine ===== */
@@ -1237,6 +1356,35 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   const sendb=document.getElementById("chatsend"), inp=document.getElementById("chatinput");
   if(sendb) sendb.onclick=sendChat;
   if(inp) inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); sendChat(); } });
+})();
+
+/* v30: Freihand-Voice (Web Speech Recognition) — nur wo unterstützt */
+(function(){
+  const mic=document.getElementById("micbtn"); if(!mic) return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ mic.style.display="none"; return; }
+  let rec=null, listening=false, sawResult=false;
+  mic.onclick=()=>{
+    if(listening){ try{ rec.stop(); }catch(e){} return; }
+    const inp=document.getElementById("chatinput"); if(!inp) return;
+    try{
+      rec=new SR(); rec.lang="de-DE"; rec.interimResults=true; rec.maxAlternatives=1; rec.continuous=false;
+      sawResult=false;
+      rec.onstart=()=>{ listening=true; mic.classList.add("listening"); };
+      rec.onresult=(e)=>{
+        let t=""; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript;
+        inp.value=t; sawResult=!!t.trim();
+      };
+      rec.onerror=()=>{ listening=false; mic.classList.remove("listening"); };
+      rec.onend=()=>{
+        listening=false; mic.classList.remove("listening");
+        const t=(inp.value||"").trim();
+        if(sawResult && t){ sendChat(); }
+      };
+      try{ unlockAudio(); }catch(e){}
+      rec.start();
+    }catch(e){ listening=false; mic.classList.remove("listening"); }
+  };
 })();
 
 /* Anthropic-Einstellungen */
