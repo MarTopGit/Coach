@@ -228,8 +228,11 @@ syncToggles();
 function estMs(text, rate){ return Math.max(1300, (text.split(/\s+/).length*330)/(rate||1)); }
 
 /* ---- Studio-Stimmen (ElevenLabs) ---- */
-const EL_VOICES={ viktor:"onwK4e9ZLuTAKqWW03F9", deniz:"TxGEqnHWrfWFTfGW9XjX", peter:"JBFqnCBsd6RMkjVDRZzb",
-  elias:"ErXwobaYiN019PkySvjV", lena:"XrExE9yKIg1WjnnlVkGX", mara:"XB0fDUnXU5powFXDhCwa" };
+const EL_VOICES={ viktor:"MMwckqU477oQxnAk1SgA", deniz:"YqQRnUKh927WHIDqnaT5", peter:"29P4oL0t0q3euslXSCVo",
+  elias:"soHmiIubT10zZnlm8aIb", lena:"mDRP1h6KfUD1XAUJxqr0", mara:"NE7AIW5DoJ7lUosXV2KR" };
+// v35: natürlicheres Modell (flüssige, ganze Sätze statt „gehackt")
+const EL_MODEL="eleven_multilingual_v2";
+const EL_SETTINGS={ stability:0.45, similarity_boost:0.85, style:0.15, use_speaker_boost:true };
 const audioCache=new Map();
 const player=new Audio();
 let audioUnlocked=false;
@@ -366,7 +369,7 @@ applyMood(); startParallax(); initGL(); loadAvatars();
   setTimeout(()=>{ intro.classList.add("hidden"); }, 2500);
 })();
 
-const AUDIO_CACHE="coach-audio-v1";
+const AUDIO_CACHE="coach-audio-v3";
 function cacheKeyURL(coachId, clean){
   let h=0; for(let i=0;i<clean.length;i++){ h=(h*31+clean.charCodeAt(i))>>>0; }
   return "https://audio.local/"+coachId+"/"+h;
@@ -406,8 +409,7 @@ function speakStudio(coachId, clean, onDur){
       fetch("https://api.elevenlabs.io/v1/text-to-speech/"+EL_VOICES[coachId]+"?output_format=mp3_44100_64",{
         method:"POST",
         headers:{ "xi-api-key":elKey, "Content-Type":"application/json" },
-        body:JSON.stringify({ text:clean, model_id:"eleven_flash_v2_5",
-          voice_settings:{ stability:0.5, similarity_boost:0.75, style:0.35, use_speaker_boost:true } })
+        body:JSON.stringify({ text:clean, model_id:EL_MODEL, voice_settings:EL_SETTINGS })
       }).then(r=>{ if(!r.ok) throw new Error("http "+r.status); return r.blob(); })
         .then(b=>{ putCachedAudio(coachId,clean,b);
           const url=URL.createObjectURL(b); audioCache.set(coachId+"|"+clean,url); start(url); })
@@ -1375,14 +1377,15 @@ function revealSynced(id, clean, token, typ){
       else stop();
     }, per);
   };
+  const snapToStart=()=>{ try{ if(line) log.scrollTop=Math.max(0, line.offsetTop-14); }catch(e){} };
   return speak(id, clean, (ms)=>beginReveal(ms)).then(()=>{
     if(token!==seqToken) return;
     if(!started) beginReveal(estMs(clean,COACHES[id].rate));
-    finishAll(); setSpeakingUI(false);
+    finishAll(); setSpeakingUI(false); snapToStart();
   }).catch(()=>{
     if(token!==seqToken) return;
     if(!started) beginReveal(estMs(clean,COACHES[id].rate));
-    finishAll(); setSpeakingUI(false);
+    finishAll(); setSpeakingUI(false); snapToStart();
   });
 }
 /* v31: 1:1-Antwort holen, dann im Sprechtakt zeigen */
@@ -1645,9 +1648,13 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
 })();
 
 if("serviceWorker" in navigator){
+  const _hadController=!!navigator.serviceWorker.controller; // schon kontrolliert = Update-Fall
   navigator.serviceWorker.register("sw.js").then(reg=>{ try{ reg.update(); }catch(e){} }).catch(()=>{});
   let _refreshed=false;
-  navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(_refreshed) return; _refreshed=true; location.reload(); });
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{
+    if(_refreshed || !_hadController) return; // Erstinstallation: nicht neu laden (sonst spielt das Intro doppelt)
+    _refreshed=true; location.reload();
+  });
 }
 
 /* ===== Studio-Stimmen: Einstellungen ===== */
@@ -1690,7 +1697,7 @@ document.getElementById("eltest").onclick=()=>{
   fetch("https://api.elevenlabs.io/v1/text-to-speech/"+EL_VOICES.viktor+"?output_format=mp3_44100_64",{
     method:"POST",
     headers:{ "xi-api-key":key, "Content-Type":"application/json" },
-    body:JSON.stringify({ text:"Hallo Marco, hier ist Viktor. Die Verbindung steht.", model_id:"eleven_flash_v2_5" })
+    body:JSON.stringify({ text:"Hallo Marco, hier ist Viktor. Die Verbindung steht.", model_id:EL_MODEL, voice_settings:EL_SETTINGS })
   }).then(r=>{
     if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,120)); });
     return r.blob();
