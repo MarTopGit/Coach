@@ -352,17 +352,17 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
   <div class="view" id="view-tag">
     <div class="sectitle" style="margin-top:6px">Dein Tag</div>
-    <div class="secsub">Sobald Whoop, Kalender und deine Gym-App verbunden sind, lebt dieser Bereich.</div>
+    <div class="secsub">Dein Heute aus Whoop und deiner Gym-App. (Kalender folgt.)</div>
     <div class="metrics">
-      <div class="metric fx fx-left" style="--d:.05s;cursor:default">
+      <div class="metric fx fx-left" id="m-whoop" style="--d:.05s;cursor:default">
         <div class="mlabel">Whoop</div>
-        <div class="mval" style="color:var(--text3)">Nicht verbunden</div>
-        <div class="msub">Recovery, Schlaf, HRV — folgt.</div>
+        <div class="mval" id="whoop-val" style="color:var(--text3)">—</div>
+        <div class="msub" id="whoop-sub">Recovery, Schlaf, HRV.</div>
       </div>
-      <div class="metric fx fx-right" style="--d:.05s;cursor:default">
+      <div class="metric fx fx-right" id="m-train" style="--d:.05s;cursor:default">
         <div class="mlabel">Training</div>
-        <div class="mval" style="color:var(--text3)">Noch nichts</div>
-        <div class="msub">Deine Gym-App — folgt.</div>
+        <div class="mval" id="train-val" style="color:var(--text3)">—</div>
+        <div class="msub" id="train-sub">Deine Gym-App.</div>
       </div>
     </div>
     <h2 class="fx fx-up" style="--d:.3s">Plan</h2>
@@ -386,7 +386,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 40</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 42</div>
 </div>
 
 <div id="pills"><div class="inner">

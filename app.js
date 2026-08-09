@@ -722,8 +722,42 @@ function orbPulse(coachId,on){
   o.classList.toggle("pinging",!!on);
   o.style.setProperty("--pc",COACHES[coachId].hex);
 }
+function weekCount(rows, dateKey){
+  const now=new Date(); const monday=new Date(now); const dow=(now.getDay()+6)%7;
+  monday.setDate(now.getDate()-dow); monday.setHours(0,0,0,0);
+  let n=0; (rows||[]).forEach(r=>{ const d=new Date(r[dateKey]); if(d>=monday) n++; }); return n;
+}
 function renderDay(){
-  document.getElementById("tagtl").innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0 2px">Noch kein Kalender verbunden.</div>';
+  const wv=document.getElementById("whoop-val"), ws=document.getElementById("whoop-sub"), wc=document.getElementById("m-whoop");
+  if(whoopData && whoopData.length){
+    const d=whoopData[0], rec=d.recovery;
+    if(wv){ wv.textContent = rec!=null ? rec+"%" : "—";
+      wv.style.color = rec==null?"var(--text)":(rec>=67?"var(--good)":rec>=34?"var(--warn)":"#c0392b"); }
+    const p=[];
+    if(d.sleep_hours!=null) p.push("Schlaf "+String(d.sleep_hours).replace(".",",")+" h");
+    if(d.hrv!=null) p.push("HRV "+d.hrv);
+    if(d.rhr!=null) p.push("Ruhepuls "+d.rhr);
+    if(d.strain!=null) p.push("Strain "+String(d.strain).replace(".",","));
+    if(ws) ws.textContent=(rec!=null?"Recovery":"")+(p.length?" · "+p.join(" · "):"");
+    if(wc){ wc.style.cursor="pointer"; wc.onclick=()=>openCall("elias"); }
+  } else {
+    if(wv){ wv.textContent="Nicht verbunden"; wv.style.color="var(--text3)"; }
+    if(ws) ws.textContent="Im ⚙︎ unter „Whoop“ verbinden.";
+    if(wc){ wc.style.cursor="default"; wc.onclick=null; }
+  }
+  const tv=document.getElementById("train-val"), ts=document.getElementById("train-sub"), tc=document.getElementById("m-train");
+  if(workoutData && workoutData.length){
+    const last=workoutData[0], wk=weekCount(workoutData,"workout_date");
+    if(tv){ tv.textContent=wk+(wk===1?" Einheit":" Einheiten"); tv.style.color="var(--text)"; }
+    if(ts) ts.textContent="Zuletzt "+last.workout_date+": "+(last.summary||last.type||"Training");
+    if(tc){ tc.style.cursor="pointer"; tc.onclick=()=>openCall("deniz"); }
+  } else {
+    if(tv){ tv.textContent="Noch nichts"; tv.style.color="var(--text3)"; }
+    if(ts) ts.textContent="Deine Gym-App — noch keine Trainings.";
+    if(tc){ tc.style.cursor="default"; tc.onclick=null; }
+  }
+  const tl=document.getElementById("tagtl");
+  if(tl) tl.innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0 2px">Noch kein Kalender verbunden.</div>';
 }
 
 /* ===== Log & Feed ===== */
@@ -1259,8 +1293,12 @@ function processReply(t){
   str=str.replace(/<\s*remember\b[\s\S]*$/i," ");
   // lose Fragmente
   str=str.replace(/<\/?\s*remember\b[^>]*>/gi," ").replace(/<\/?\s*rem[a-z]*$/i," ");
+  // v42: Coach-Übergabe — <invite>coachid</invite>
+  let invite=null;
+  str=str.replace(/<\s*invite\s*>\s*([a-zäöü]+)\s*<\s*\/\s*invite\s*>/i,(m,p)=>{ const id=(p||"").toLowerCase(); if(COACHES[id]) invite=id; return " "; });
+  str=str.replace(/<\s*invite\b[\s\S]*$/i," ").replace(/<\/?\s*invite\b[^>]*>/gi," ");
   const clean=str.replace(/\s{2,}/g," ").trim();
-  return { clean:clean||"…", items };
+  return { clean:clean||"…", items, invite };
 }
 function memoryFor(coachId){
   const all = !coachId || coachId==="viktor" || coachId==="all";
@@ -1293,6 +1331,7 @@ function systemPrompt(id){
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
     memoryBlock(id)+
     rememberInstructions(id);
+  p+="Wenn Marco einen anderen Coach dazuholen möchte (z. B. „hol Deniz dazu“, „was sagt Lena dazu?“, „frag mal Elias“), kündige es in einem kurzen Satz an und hänge GANZ am Ende <invite>coachid</invite> an — nur die id. Erlaubte ids: "+ORDER.filter(x=>x!==id).join(", ")+". Tu das nur, wenn Marco es wünscht oder es klar sinnvoll ist. ";
   if(id==="deniz"||id==="viktor"){ const tb=trainingSummary(); if(tb) p+=tb; }
   if(id==="deniz"||id==="elias"||id==="mara"||id==="viktor"){ const wb=whoopSummary(); if(wb) p+=wb; }
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
@@ -1300,7 +1339,21 @@ function systemPrompt(id){
   return p;
 }
 
-let convHistory=[], liveCoachId=null, liveMode=false;
+let convHistory=[], liveCoachId=null, liveMode=false, sharedLog=[];
+function transcriptText(){
+  return sharedLog.map(m=>(m.who==="marco"?"Marco":(COACHES[m.who]?COACHES[m.who].name:m.who))+": "+m.text).join("\n");
+}
+function inviteCoach(bid){
+  if(!COACHES[bid]) return;
+  const log=document.getElementById("transcript"); if(!log) return;
+  if(!isTeam) addOldify();
+  log.appendChild(el('<div class="tsys">'+COACHES[bid].name+' kommt dazu</div>')); log.scrollTop=log.scrollHeight;
+  liveCoachId=bid;
+  const ctx="(Interner Kontext, nicht wörtlich wiederholen. Bisheriges Gespräch zwischen Marco und dem Team:\n"+
+    transcriptText()+"\n\nMarco hat dich gerade in dieses laufende Gespräch dazugeholt. Steig natürlich in deinem Charakter ein, beziehe dich aufs Thema, begrüße nur ganz kurz.)";
+  convHistory=[{ role:"user", content:ctx }];
+  streamCoach(bid, ++seqToken);
+}
 function anthErr(e){
   const m=String(e&&e.message||e);
   if(m.includes("401")) return "Key ungueltig (401).";
@@ -1400,7 +1453,12 @@ function streamCoach(id, token){
     if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
     const pr=processReply(r); addItems(pr.items);
     convHistory.push({ role:"assistant", content:pr.clean });
-    return revealSynced(id, pr.clean, token, typ);
+    sharedLog.push({ who:id, text:pr.clean });
+    return revealSynced(id, pr.clean, token, typ).then(()=>{
+      if(token===seqToken && pr.invite && COACHES[pr.invite] && pr.invite!==liveCoachId){
+        setTimeout(()=>{ if(token===seqToken && liveMode) inviteCoach(pr.invite); }, 500);
+      }
+    });
   }).catch(e=>{
     try{ typ.remove(); }catch(_){}
     if(token===seqToken){ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); }
@@ -1416,7 +1474,7 @@ function coachThinking(){
   log.appendChild(t); log.scrollTop=log.scrollHeight; return t;
 }
 function enterLive(id){
-  liveCoachId=id; convHistory=[];
+  liveCoachId=id; convHistory=[]; sharedLog=[];
   document.getElementById("chips").innerHTML="";
   showChatbar();
   const trigger="(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
@@ -1431,6 +1489,7 @@ function sendChat(){
   const log=document.getElementById("transcript");
   log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
   convHistory.push({ role:"user", content:txt });
+  sharedLog.push({ who:"marco", text:txt });
   streamCoach(liveCoachId, ++seqToken);
 }
 
@@ -1482,6 +1541,7 @@ function showView(v){
   document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));
   document.querySelectorAll(".pillbtn").forEach(p=>p.classList.toggle("tabactive",p.dataset.v===v));
   window.scrollTo(0,0);
+  if(v==="tag") renderDay();
   runFX(v);
 }
 document.querySelectorAll(".pillbtn").forEach(p=>{ p.onclick=()=>showView(p.dataset.v); });
@@ -1558,33 +1618,38 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   };
 })();
 
-/* v30: Freihand-Voice (Web Speech Recognition) — nur wo unterstützt */
+/* v42: Freihand-Voice — Antippen zum Sprechen (mit Pausen), Antippen zum Senden */
 (function(){
   const mic=document.getElementById("micbtn"); if(!mic) return;
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ mic.style.display="none"; return; }
-  let rec=null, listening=false, sawResult=false;
-  mic.onclick=()=>{
-    if(listening){ try{ rec.stop(); }catch(e){} return; }
+  let rec=null, listening=false, finalText="";
+  function start(){
     const inp=document.getElementById("chatinput"); if(!inp) return;
+    finalText="";
     try{
-      rec=new SR(); rec.lang="de-DE"; rec.interimResults=true; rec.maxAlternatives=1; rec.continuous=false;
-      sawResult=false;
+      rec=new SR(); rec.lang="de-DE"; rec.interimResults=true; rec.continuous=true; rec.maxAlternatives=1;
       rec.onstart=()=>{ listening=true; mic.classList.add("listening"); };
       rec.onresult=(e)=>{
-        let t=""; for(let i=0;i<e.results.length;i++) t+=e.results[i][0].transcript;
-        inp.value=t; sawResult=!!t.trim();
+        let interim="";
+        for(let i=e.resultIndex;i<e.results.length;i++){
+          const r=e.results[i];
+          if(r.isFinal) finalText+=r[0].transcript+" "; else interim+=r[0].transcript;
+        }
+        inp.value=(finalText+interim).replace(/\s{2,}/g," ").trim();
       };
-      rec.onerror=()=>{ listening=false; mic.classList.remove("listening"); };
-      rec.onend=()=>{
-        listening=false; mic.classList.remove("listening");
-        const t=(inp.value||"").trim();
-        if(sawResult && t){ sendChat(); }
-      };
+      rec.onerror=(ev)=>{ if(ev&&(ev.error==="no-speech"||ev.error==="aborted")) return; stop(false); };
+      rec.onend=()=>{ if(listening){ try{ rec.start(); }catch(e){} } }; // Auto-Neustart bis der Nutzer stoppt
       try{ unlockAudio(); }catch(e){}
       rec.start();
     }catch(e){ listening=false; mic.classList.remove("listening"); }
-  };
+  }
+  function stop(send){
+    listening=false; mic.classList.remove("listening");
+    if(rec){ try{ rec.onend=null; rec.stop(); }catch(e){} }
+    if(send){ const inp=document.getElementById("chatinput"); const t=((inp&&inp.value)||"").trim(); if(t) sendChat(); }
+  }
+  mic.onclick=()=>{ if(listening) stop(true); else start(); };
 })();
 
 /* Anthropic-Einstellungen */
