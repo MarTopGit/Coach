@@ -628,7 +628,7 @@ function showChips(chips){
 }
 
 /* ===== Orbit ===== */
-const OCX=165, OCY=151, ORX=128, ORY=52, OW=(2*Math.PI)/140000;
+const OCX=165, OCY=151, ORX=132, ORY=64, OW=(2*Math.PI)/140000;
 let dragSpin=0, mouseSpin=0, mouseSpinT=0, _dragLast=null, _dragMoved=0;
 let orbEls=[], orbitT0=0, frontId="";
 const AVOK={};
@@ -667,7 +667,7 @@ function renderOrbit(){
   setCenterViktor();
   orbitT0=performance.now();
   requestAnimationFrame(orbitLoop);
-  orbitSay("viktor","Head Coach", viktorBriefing(), "viktor");
+  orbitSay("viktor","Tages-Check-in", viktorBriefing(), "viktor");
 }
 function setCenterViktor(){
   const cen=document.getElementById("centerorb"); if(!cen) return;
@@ -1556,7 +1556,9 @@ function enterLive(id){
   liveCoachId=id; convHistory=[]; sharedLog=[];
   document.getElementById("chips").innerHTML="";
   showChatbar();
-  const trigger="(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
+  const trigger = (id==="viktor")
+    ? "(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn kurz, gib einen knappen Lagebericht NUR aus den dir bekannten echten Daten — falls keine da sind, lass das weg und erfinde nichts —, und frag ihn, was heute sein Fokus ist oder wie es ihm geht. Kurz: ein bis zwei Sätze plus eine Frage.)"
+    : "(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
   convHistory.push({ role:"user", content:trigger });
   streamCoach(id, ++seqToken);
 }
