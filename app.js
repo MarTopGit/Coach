@@ -872,6 +872,7 @@ async function syncMemoryFromDB(){
   else { memItems=rows.map(rowToItem); }
   saveMem(); updateMemUI();
   await syncWorkoutsFromDB();
+  await syncWhoopFromDB();
 }
 async function pushAllMemoryReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const it of memItems){ it.id=undefined; await dbInsertMemory(it); } }
 async function dbSelectWorkouts(){
@@ -886,6 +887,19 @@ async function syncWorkoutsFromDB(){
   if(!sbUser || !sbToken) return;
   const rows=await dbSelectWorkouts(); if(rows===null) return;
   workoutData=rows; store.set("workoutData", JSON.stringify(workoutData));
+}
+async function dbSelectWhoop(){
+  const q="/rest/v1/whoop_data?select=day,recovery,hrv,rhr,sleep_hours,sleep_perf,strain&order=day.desc&limit=14";
+  try{
+    let r=await fetch(SB_URL+q, { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
+    if(!r.ok) return null; return await r.json();
+  }catch(e){ return null; }
+}
+async function syncWhoopFromDB(){
+  if(!sbUser || !sbToken) return;
+  const rows=await dbSelectWhoop(); if(rows===null) return;
+  whoopData=rows; store.set("whoopData", JSON.stringify(whoopData));
 }
 async function sbRefreshSession(){
   if(store.get("sbRefresh")){ if(await sbTryRefresh()){ updateAuthUI(); await syncMemoryFromDB(); return; } sbClear(); }
@@ -1087,7 +1101,8 @@ function openLiveRound(topic){
     "Es wird NICHT gestritten — die Runde läuft auf einen gemeinsamen Konsens hinaus, es geht um das beste Ergebnis für Marco, nicht ums Rechthaben. Deutsch, per Du, gesprochen, jeder Beitrag 1 bis 3 Sätze. "+
     memoryBlock()+
     ((parts.indexOf("deniz")>=0||parts.indexOf("viktor")>=0)?trainingSummary():"")+
-    "Erfinde KEINE Daten über Marco (keine Whoop-Werte; keine Trainingszahlen außer den oben genannten echten), wenn sie nicht oben stehen. "+
+    ((parts.indexOf("deniz")>=0||parts.indexOf("elias")>=0||parts.indexOf("mara")>=0||parts.indexOf("viktor")>=0)?whoopSummary():"")+
+    "Erfinde KEINE Daten über Marco (keine Werte außer den oben genannten echten Whoop-/Trainingszahlen), wenn sie nicht oben stehen. "+
     "Antworte AUSSCHLIESSLICH als reines JSON-Array, ohne Text drumherum, Format: [{\"coach\":\"<id>\",\"text\":\"...\"}]. "+
     "Erlaubte coach-ids: "+parts.join(", ")+". 6 bis 9 Beiträge, der letzte fasst den gemeinsamen Konsens zusammen.";
   const tk=++seqToken;
@@ -1146,6 +1161,25 @@ function trainingSummary(){
   if(tops.length) s+="Aktuelle Bestwerte: "+tops.join("; ")+". ";
   const recent=ws.slice(0,3).map(w=>w.workout_date+": "+(w.summary||w.type||"")).join(" | ");
   if(recent) s+="Letzte Einheiten: "+recent+". ";
+  return s;
+}
+/* Whoop-Werte (read-only, kommen über Supabase) */
+let whoopData=[];
+try{ whoopData=JSON.parse(store.get("whoopData")||"[]"); if(!Array.isArray(whoopData)) whoopData=[]; }catch(e){ whoopData=[]; }
+function whoopSummary(){
+  if(!whoopData || !whoopData.length) return "";
+  const d=whoopData[0];
+  let s="Aktuelle Whoop-Werte (automatisch synchronisiert — nutze diese echten Zahlen, erfinde keine): ";
+  const parts=[];
+  if(d.recovery!=null) parts.push("Recovery "+d.recovery+"%");
+  if(d.hrv!=null) parts.push("HRV "+d.hrv+" ms");
+  if(d.rhr!=null) parts.push("Ruhepuls "+d.rhr+" bpm");
+  if(d.sleep_hours!=null) parts.push("Schlaf "+String(d.sleep_hours).replace(".",",")+" h"+(d.sleep_perf!=null?" ("+d.sleep_perf+"%)":""));
+  if(d.strain!=null) parts.push("Strain "+String(d.strain).replace(".",","));
+  s+="Stand "+d.day+": "+parts.join(", ")+". ";
+  const rec=whoopData.filter(x=>x.recovery!=null).slice(0,7);
+  if(rec.length>=3){ const avg=Math.round(rec.reduce((a,x)=>a+x.recovery,0)/rec.length);
+    s+="7-Tage-Recovery-Schnitt: "+avg+"%. "; }
   return s;
 }
 const MEM_KINDS=["fact","state","milestone"];
@@ -1258,6 +1292,7 @@ function systemPrompt(id){
     memoryBlock(id)+
     rememberInstructions(id);
   if(id==="deniz"||id==="viktor"){ const tb=trainingSummary(); if(tb) p+=tb; }
+  if(id==="deniz"||id==="elias"||id==="mara"||id==="viktor"){ const wb=whoopSummary(); if(wb) p+=wb; }
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
@@ -1498,6 +1533,25 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   const sendb=document.getElementById("chatsend"), inp=document.getElementById("chatinput");
   if(sendb) sendb.onclick=sendChat;
   if(inp) inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); sendChat(); } });
+})();
+
+/* Whoop verbinden / aktualisieren */
+(function(){
+  const b=document.getElementById("whoopconnect"), rb=document.getElementById("whooprefresh"), st=document.getElementById("whoopstatus");
+  const WHOOP_CONNECT="https://hrmhrfuqmdajskoddrxm.supabase.co/functions/v1/whoop-auth?connect=1&uid=";
+  if(b) b.onclick=()=>{
+    if(!sbUser || !sbToken){ if(st) st.textContent="Bitte zuerst oben unter „Konto & Sync“ anmelden."; return; }
+    if(st) st.textContent="Öffne Whoop-Login … erlaube den Zugriff, dann zurück zur App.";
+    try{ window.open(WHOOP_CONNECT+encodeURIComponent(sbUserId), "_blank"); }catch(e){ location.href=WHOOP_CONNECT+encodeURIComponent(sbUserId); }
+  };
+  if(rb) rb.onclick=async()=>{
+    if(!sbUser || !sbToken){ if(st) st.textContent="Erst anmelden."; return; }
+    if(st) st.textContent="Lade Whoop-Werte …";
+    await syncWhoopFromDB();
+    const d=whoopData[0];
+    if(st) st.textContent = d ? ("Aktuell ("+d.day+"): Recovery "+(d.recovery??"–")+"%, Schlaf "+(d.sleep_hours??"–")+" h, Strain "+(d.strain??"–"))
+      : "Noch keine Werte da. Verbunden? Der Sync läuft stündlich — kurz später nochmal.";
+  };
 })();
 
 /* v30: Freihand-Voice (Web Speech Recognition) — nur wo unterstützt */
