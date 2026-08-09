@@ -10,6 +10,7 @@ const COACHES = {
   mara:{ name:"Mara", role:"Anker", vibe:"entschleunigend · weise", hex:"#3fd6ad", ini:"M", rate:0.92, pitch:1.05 },
 };
 const ORDER = Object.keys(COACHES);
+const SPECIALISTS = ORDER.filter(id=>id!=="viktor"); // v43: Viktor ist der Kern, diese 5 umkreisen ihn
 
 const DEMO = {
   recovery: 64, sleep:"5 h 40 min", hrv:"38 ms",
@@ -465,7 +466,7 @@ function addMsg(who,text){
   log.scrollTop=log.scrollHeight;
 }
 function openCall(id){
-  paused=false; resumeFn=null; liveMode=false; liveCoachId=null;
+  paused=false; resumeFn=null; liveMode=false; liveCoachId=null; liveTeam=false; liveParticipants=[];
   const _cb=document.getElementById("chatbar"); if(_cb) _cb.style.display="none";
   const pb=document.getElementById("pausebtn"); if(pb) pb.textContent="❚❚";
   currentScript=SCRIPTS[id]; isTeam=!!(currentScript&&currentScript.isTeam); callOpen=true;
@@ -511,7 +512,10 @@ function closeCall(){
   // v29: echtes 1:1-Gespräch vor dem Aufräumen für ein Logbuch-Fazit erfassen
   const _sumId=liveCoachId, _sumHist=(convHistory||[]).slice();
   const _realTurns=_sumHist.filter(m=>m.role==="user" && !/Interner Hinweis/.test(m.content||"")).length;
-  if(_sumId && _realTurns>=1){ try{ summarizeConversation(_sumId, _sumHist); }catch(e){} }
+  const _wasTeam=liveTeam, _shared=(sharedLog||[]).slice();
+  if(_wasTeam){ if(_shared.filter(m=>m.who==="marco").length>=1){ try{ summarizeTeam(_shared); }catch(e){} } }
+  else if(_sumId && _realTurns>=1){ try{ summarizeConversation(_sumId, _sumHist); }catch(e){} }
+  liveTeam=false; liveParticipants=[];
   callOpen=false; seqToken++; paused=false; resumeFn=null;
   const b=document.getElementById("pausebtn"); if(b) b.textContent="❚❚";
   document.getElementById("call").classList.remove("open");
@@ -633,6 +637,7 @@ function refreshOrbFaces(){
   orbEls.forEach(o=>{ const id=o.dataset.c;
     o.classList.toggle("hasimg",!!AVOK[id]);
     o.innerHTML=avatarInner(id)+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES[id].hex+'40"></span>'; });
+  if(typeof setCenterViktor==="function" && document.getElementById("centerorb") && document.getElementById("centerorb").innerHTML) try{ setCenterViktor(); }catch(e){}
   if(typeof renderStaticOrbs==="function") try{ renderStaticOrbs(); }catch(e){}
   if(typeof renderPicker==="function") try{ renderPicker(); }catch(e){}
   if(typeof renderCoachCards==="function") try{ renderCoachCards(); }catch(e){}
@@ -653,21 +658,31 @@ function renderOrbit(){
   const h=now.getHours();
   document.getElementById("greeting").textContent=(h<11?"Guten Morgen":h<18?"Hallo":"Guten Abend")+", Marco";
   const wrap=document.getElementById("orbs"); wrap.innerHTML=""; orbEls=[];
-  ORDER.forEach((id,i)=>{
+  SPECIALISTS.forEach((id,i)=>{
     const o=el('<div class="orb oorb" data-c="'+id+'" style="'+orbStyle(id)+';opacity:0">'+
       avatarInner(id)+'<i class="sheen" style="animation-delay:-'+(i*3)+'s"></i><span class="ring"></span></div>');
     o.onclick=()=>flyOpen(id,o);
     wrap.appendChild(o); orbEls.push(o);
   });
-  const cen=document.getElementById("centerorb");
-  cen.style.background="radial-gradient(circle at 32% 28%,#ffffff,#e4e4e9 80%)";
-  cen.style.boxShadow="0 8px 28px rgba(0,0,0,.10)";
-  cen.style.color="#1d1d1f";
-  cen.innerHTML='M<i class="sheen"></i>';
-  cen.onclick=()=>flyOpen("viktor",cen);
+  setCenterViktor();
   orbitT0=performance.now();
   requestAnimationFrame(orbitLoop);
-  orbitSay("viktor","Willkommen","Dein Team ist neu hier — und <b>neugierig auf dich</b>.","viktor");
+  orbitSay("viktor","Head Coach", viktorBriefing(), "viktor");
+}
+function setCenterViktor(){
+  const cen=document.getElementById("centerorb"); if(!cen) return;
+  cen.setAttribute("style", orbStyle("viktor"));
+  cen.classList.add("orb"); cen.classList.toggle("hasimg", !!AVOK.viktor);
+  cen.innerHTML=avatarInner("viktor")+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES.viktor.hex+'66"></span>';
+  cen.onclick=()=>flyOpen("viktor",cen);
+}
+function viktorBriefing(){
+  const bits=[];
+  if(typeof whoopData!=="undefined" && whoopData && whoopData.length && whoopData[0].recovery!=null) bits.push("Recovery "+whoopData[0].recovery+"%");
+  if(typeof workoutData!=="undefined" && workoutData && workoutData.length){ const wk=weekCount(workoutData,"workout_date"); bits.push(wk+(wk===1?" Einheit":" Einheiten")+" diese Woche"); }
+  if(bits.length) return "Kurzer Lagebericht: <b>"+bits.join(" · ")+"</b>. Tipp mich an für deinen Tag.";
+  if(typeof memItems!=="undefined" && memItems.length) return "Ich hab dein Team im Blick. <b>Womit starten wir heute?</b>";
+  return "Dein Team ist startklar — <b>ich koordiniere</b>. Erzähl mir, worum es heute geht.";
 }
 function orbitLoop(nowT){
   const t=nowT-orbitT0;
@@ -677,7 +692,7 @@ function orbitLoop(nowT){
     const pe=Math.min(1,Math.max(0,(t-160-i*95)/850));
     if(pe<1) allIn=false;
     const sp=pe<=0?0:easeOutBack(pe);
-    const ang=Math.PI/2+i*Math.PI/3+t*OW+dragSpin+mouseSpin;
+    const ang=Math.PI/2+i*(2*Math.PI/5)+t*OW+dragSpin+mouseSpin;
     const z=Math.sin(ang), f=(z+1)/2;
     const x=OCX+Math.cos(ang)*ORX*sp, y=OCY+Math.sin(ang)*ORY*sp;
     const sc=(.4+.9*f)*(.3+.7*Math.min(1,pe*1.15));
@@ -1119,6 +1134,7 @@ function openLiveRound(topic){
   topic=(topic||"").trim(); if(!topic) return;
   const parts=(selectedParts&&selectedParts.length)?selectedParts.slice():ORDER.slice();
   paused=false; resumeFn=null; liveMode=false; liveCoachId=null;
+  liveTeam=true; liveParticipants=parts.slice(); sharedLog=[{ who:"marco", text:"Thema: "+topic }];
   currentScript={ isTeam:true, parts:parts }; isTeam=true; callOpen=true;
   const call=document.getElementById("call");
   document.getElementById("transcript").innerHTML="";
@@ -1149,6 +1165,7 @@ function openLiveRound(topic){
     try{ const m=txt.match(/\[[\s\S]*\]/); turns=JSON.parse(m?m[0]:txt); }catch(e){ turns=[]; }
     turns=(turns||[]).filter(t=>t&&COACHES[t.coach]&&parts.indexOf(t.coach)>=0&&t.text);
     if(!turns.length){ addMsg("sys","Konnte die Runde nicht erzeugen — bitte nochmal versuchen."); return; }
+    turns.forEach(t=>sharedLog.push({ who:t.coach, text:String(t.text) }));
     const msgs=turns.map(t=>[t.coach, String(t.text)]);
     runSequence(msgs, ()=>showChips([{ t:"Runde beenden", end:true }]), tk);
   }).catch(e=>{ try{ typ.remove(); }catch(_){} addMsg("sys","⚠︎ "+anthErr(e)); });
@@ -1280,6 +1297,20 @@ function summarizeConversation(coachId, hist){
     saveLog(); renderLog();
   }).catch(()=>{});
 }
+function summarizeTeam(shared){
+  if(!anthKey) return;
+  const convo=(shared||[]).filter(m=>m.text).map(m=>(m.who==="marco"?"Marco":(COACHES[m.who]?COACHES[m.who].name:m.who))+": "+m.text).join("\n");
+  if(!convo.trim()) return;
+  const sys="Fasse diese Teambesprechung von Marcos Coaching-Team für sein privates Logbuch in EINER knappen deutschen Zeile zusammen. "+
+    "Format exakt: 'Teamrunde: … · Ergebnis: …'. Nur diese eine Zeile, keine Anführungszeichen, kein weiterer Text.";
+  claudeRaw(sys, [{ role:"user", content:convo }], 140).then(line=>{
+    line=(line||"").replace(/^["'„»]+|["'"«»]+$/g,"").trim();
+    if(!line || line.length<4) return;
+    logEntries.unshift({ t:line, d:new Date().toISOString(), coach:"viktor" });
+    logEntries=logEntries.slice(0,50);
+    saveLog(); renderLog();
+  }).catch(()=>{});
+}
 function parseRememberTag(attrStr, body){
   const get=(name)=>{ const m=(attrStr||"").match(new RegExp(name+'\\s*=\\s*"([^"]*)"','i'))||(attrStr||"").match(new RegExp(name+"\\s*=\\s*'([^']*)'","i")); return m?m[1].trim():""; };
   return { text:(body||"").trim(), kind:get("kind").toLowerCase()||"fact", coach:get("coach")||"core", key:get("key"), date:get("date") };
@@ -1293,12 +1324,12 @@ function processReply(t){
   str=str.replace(/<\s*remember\b[\s\S]*$/i," ");
   // lose Fragmente
   str=str.replace(/<\/?\s*remember\b[^>]*>/gi," ").replace(/<\/?\s*rem[a-z]*$/i," ");
-  // v42: Coach-Übergabe — <invite>coachid</invite>
-  let invite=null;
-  str=str.replace(/<\s*invite\s*>\s*([a-zäöü]+)\s*<\s*\/\s*invite\s*>/i,(m,p)=>{ const id=(p||"").toLowerCase(); if(COACHES[id]) invite=id; return " "; });
+  // Coach-Übergabe — ein oder mehrere <invite>coachid</invite>
+  const invites=[];
+  str=str.replace(/<\s*invite\s*>\s*([a-zäöü]+)\s*<\s*\/\s*invite\s*>/gi,(m,p)=>{ const id=(p||"").toLowerCase(); if(COACHES[id] && invites.indexOf(id)<0) invites.push(id); return " "; });
   str=str.replace(/<\s*invite\b[\s\S]*$/i," ").replace(/<\/?\s*invite\b[^>]*>/gi," ");
   const clean=str.replace(/\s{2,}/g," ").trim();
-  return { clean:clean||"…", items, invite };
+  return { clean:clean||"…", items, invite:invites[0]||null, invites };
 }
 function memoryFor(coachId){
   const all = !coachId || coachId==="viktor" || coachId==="all";
@@ -1339,20 +1370,67 @@ function systemPrompt(id){
   return p;
 }
 
-let convHistory=[], liveCoachId=null, liveMode=false, sharedLog=[];
+let convHistory=[], liveCoachId=null, liveMode=false, sharedLog=[], liveTeam=false, liveParticipants=[];
 function transcriptText(){
   return sharedLog.map(m=>(m.who==="marco"?"Marco":(COACHES[m.who]?COACHES[m.who].name:m.who))+": "+m.text).join("\n");
 }
-function inviteCoach(bid){
-  if(!COACHES[bid]) return;
+/* v44: aus einem 1:1 fließend in eine Teambesprechung wechseln */
+function switchToTeam(newIds){
+  const base = liveTeam ? liveParticipants.slice() : (liveCoachId ? [liveCoachId] : []);
+  const parts=[];
+  base.concat(newIds||[]).forEach(id=>{ if(COACHES[id] && parts.indexOf(id)<0) parts.push(id); });
+  if(parts.length<2) return;
+  const added=(newIds||[]).filter(id=>COACHES[id] && base.indexOf(id)<0);
+  liveParticipants=parts; liveTeam=true; isTeam=true; liveMode=true;
+  addOldify(); // bisherige 1:1-Zeilen zu Kontext schrumpfen
+  const call=document.getElementById("call"); call.classList.add("teammode");
+  const tr=document.getElementById("teamrow"); tr.style.display="flex";
+  tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join("");
+  showChatbar();
+  teamTransition(parts, added, ()=>{
+    const note = added.length
+      ? "(Marco hat "+added.map(id=>COACHES[id].name).join(" und ")+" gerade in die Besprechung dazugeholt. Die Dazugeholten steigen kurz ein und knüpfen ans Thema an.)"
+      : "";
+    teamRespond(note);
+  });
+}
+function teamTransition(parts, added, done){
+  const call=document.getElementById("call"); if(!call){ if(done) done(); return; }
+  const names = added && added.length ? " mit "+added.map(id=>COACHES[id].name).join(" & ") : "";
+  const ov=el('<div class="teamswitch"><div class="tsrow">'+
+    parts.map(id=>'<div class="orb'+(AVOK[id]?' hasimg':'')+'" style="'+orbStyle(id)+'">'+avatarInner(id)+'</div>').join("")+
+    '</div><div class="tstext">Teambesprechung'+esc(names)+'</div></div>');
+  call.appendChild(ov);
+  setTimeout(()=>{ ov.classList.add("out"); }, 1150);
+  setTimeout(()=>{ try{ ov.remove(); }catch(e){} if(done) done(); }, 1600);
+}
+function teamRespond(extraNote){
+  const parts=liveParticipants.slice(); if(parts.length<2) return;
   const log=document.getElementById("transcript"); if(!log) return;
-  if(!isTeam) addOldify();
-  log.appendChild(el('<div class="tsys">'+COACHES[bid].name+' kommt dazu</div>')); log.scrollTop=log.scrollHeight;
-  liveCoachId=bid;
-  const ctx="(Interner Kontext, nicht wörtlich wiederholen. Bisheriges Gespräch zwischen Marco und dem Team:\n"+
-    transcriptText()+"\n\nMarco hat dich gerade in dieses laufende Gespräch dazugeholt. Steig natürlich in deinem Charakter ein, beziehe dich aufs Thema, begrüße nur ganz kurz.)";
-  convHistory=[{ role:"user", content:ctx }];
-  streamCoach(bid, ++seqToken);
+  const typ=el('<div class="tsys">Das Team überlegt …</div>'); log.appendChild(typ); log.scrollTop=log.scrollHeight;
+  const roster=parts.map(id=>COACHES[id].name+" ("+COACHES[id].role+", "+COACHES[id].vibe+", id: "+id+")").join("; ");
+  const wantsTrain=parts.some(x=>x==="deniz"||x==="viktor");
+  const wantsWhoop=parts.some(x=>["deniz","elias","mara","viktor"].includes(x));
+  const sys="Du inszenierst eine laufende, lockere Teambesprechung von Marcos Coaching-Team. Teilnehmer: "+roster+". "+
+    "Reagiere auf Marcos letzte Nachricht: es antworten NUR die Coaches, die wirklich etwas beizutragen haben (einer bis drei pro Runde), jeweils 1 bis 3 Sätze, in ihrem Charakter. Sie hören einander zu, geben sich auch recht, bauen aufeinander auf — kein Streit. Deutsch, per Du, gesprochen. "+
+    memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
+    "Erfinde keine Daten über Marco. Antworte AUSSCHLIESSLICH als reines JSON-Array, Format [{\"coach\":\"<id>\",\"text\":\"...\"}], erlaubte ids: "+parts.join(", ")+".";
+  const user="Bisheriger Gesprächsverlauf:\n"+transcriptText()+(extraNote?("\n\n"+extraNote):"");
+  const tk=++seqToken;
+  claudeRaw(sys, [{ role:"user", content:user }], 900).then(txt=>{
+    if(tk!==seqToken) return; try{ typ.remove(); }catch(e){}
+    let turns=[]; try{ const m=txt.match(/\[[\s\S]*\]/); turns=JSON.parse(m?m[0]:txt); }catch(e){ turns=[]; }
+    turns=(turns||[]).filter(t=>t&&COACHES[t.coach]&&parts.indexOf(t.coach)>=0&&t.text);
+    if(!turns.length){ addMsg("sys","(Keine Antwort — bitte nochmal.)"); return; }
+    turns.forEach(t=>sharedLog.push({ who:t.coach, text:String(t.text) }));
+    runSequence(turns.map(t=>[t.coach, String(t.text)]), null, tk);
+  }).catch(e=>{ try{ typ.remove(); }catch(_){} addMsg("sys","⚠︎ "+anthErr(e)); });
+}
+function sendTeamChat(txt){
+  const log=document.getElementById("transcript"); if(!log) return;
+  log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
+  sharedLog.push({ who:"marco", text:txt });
+  teamRespond();
 }
 function anthErr(e){
   const m=String(e&&e.message||e);
@@ -1455,8 +1533,9 @@ function streamCoach(id, token){
     convHistory.push({ role:"assistant", content:pr.clean });
     sharedLog.push({ who:id, text:pr.clean });
     return revealSynced(id, pr.clean, token, typ).then(()=>{
-      if(token===seqToken && pr.invite && COACHES[pr.invite] && pr.invite!==liveCoachId){
-        setTimeout(()=>{ if(token===seqToken && liveMode) inviteCoach(pr.invite); }, 500);
+      const add=(pr.invites||[]).filter(x=>COACHES[x] && x!==id);
+      if(token===seqToken && add.length){
+        setTimeout(()=>{ if(token===seqToken && liveMode) switchToTeam(add); }, 450);
       }
     });
   }).catch(e=>{
@@ -1483,7 +1562,9 @@ function enterLive(id){
 }
 function sendChat(){
   const inp=document.getElementById("chatinput");
-  const txt=(inp.value||"").trim(); if(!txt || !liveMode || !liveCoachId) return;
+  const txt=(inp.value||"").trim(); if(!txt) return;
+  if(liveTeam){ inp.value=""; sendTeamChat(txt); return; }
+  if(!liveMode || !liveCoachId) return;
   inp.value="";
   addOldify();
   const log=document.getElementById("transcript");
