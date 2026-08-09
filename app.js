@@ -871,8 +871,22 @@ async function syncMemoryFromDB(){
   if(rows.length===0 && memItems.length){ for(const it of memItems){ await dbInsertMemory(it); } }
   else { memItems=rows.map(rowToItem); }
   saveMem(); updateMemUI();
+  await syncWorkoutsFromDB();
 }
 async function pushAllMemoryReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const it of memItems){ it.id=undefined; await dbInsertMemory(it); } }
+async function dbSelectWorkouts(){
+  const q="/rest/v1/workouts?select=workout_date,type,vol,mins,summary,data&order=workout_date.desc&limit=40";
+  try{
+    let r=await fetch(SB_URL+q, { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
+    if(!r.ok) return null; return await r.json();
+  }catch(e){ return null; }
+}
+async function syncWorkoutsFromDB(){
+  if(!sbUser || !sbToken) return;
+  const rows=await dbSelectWorkouts(); if(rows===null) return;
+  workoutData=rows; store.set("workoutData", JSON.stringify(workoutData));
+}
 async function sbRefreshSession(){
   if(store.get("sbRefresh")){ if(await sbTryRefresh()){ updateAuthUI(); await syncMemoryFromDB(); return; } sbClear(); }
   updateAuthUI();
@@ -1072,7 +1086,8 @@ function openLiveRound(topic){
     "Teilnehmer: "+roster+". Jeder spricht aus seinem Charakter und seiner Rolle, hört den anderen zu, gibt ihnen auch recht, baut auf ihren Punkten auf. "+
     "Es wird NICHT gestritten — die Runde läuft auf einen gemeinsamen Konsens hinaus, es geht um das beste Ergebnis für Marco, nicht ums Rechthaben. Deutsch, per Du, gesprochen, jeder Beitrag 1 bis 3 Sätze. "+
     memoryBlock()+
-    "Erfinde KEINE Daten über Marco (keine Whoop-Werte, keine Trainingszahlen), wenn sie nicht oben stehen. "+
+    ((parts.indexOf("deniz")>=0||parts.indexOf("viktor")>=0)?trainingSummary():"")+
+    "Erfinde KEINE Daten über Marco (keine Whoop-Werte; keine Trainingszahlen außer den oben genannten echten), wenn sie nicht oben stehen. "+
     "Antworte AUSSCHLIESSLICH als reines JSON-Array, ohne Text drumherum, Format: [{\"coach\":\"<id>\",\"text\":\"...\"}]. "+
     "Erlaubte coach-ids: "+parts.join(", ")+". 6 bis 9 Beiträge, der letzte fasst den gemeinsamen Konsens zusammen.";
   const tk=++seqToken;
@@ -1107,6 +1122,32 @@ if(!memItems.length){ try{ const old=JSON.parse(store.get("memFacts")||"[]");
   if(Array.isArray(old)&&old.length){ memItems=old.map(t=>({ text:String(t), kind:"fact", coach:"core" })); store.set("memItems",JSON.stringify(memItems)); }
 }catch(e){} }
 function saveMem(){ store.set("memItems", JSON.stringify(memItems)); }
+/* Trainingsdaten aus der Gym-App (read-only, kommen über Supabase) */
+let workoutData=[];
+try{ workoutData=JSON.parse(store.get("workoutData")||"[]"); if(!Array.isArray(workoutData)) workoutData=[]; }catch(e){ workoutData=[]; }
+function numKg(x){ return parseFloat(String(x==null?"":x).replace(",","."))||0; }
+function trainingSummary(){
+  if(!workoutData || !workoutData.length) return "";
+  const ws=workoutData.slice();
+  const last=ws[0];
+  const now=new Date(); const monday=new Date(now); const dow=(now.getDay()+6)%7;
+  monday.setDate(now.getDate()-dow); monday.setHours(0,0,0,0);
+  let week=0; ws.forEach(w=>{ const d=new Date(w.workout_date); if(d>=monday) week++; });
+  const maxKg={};
+  ws.forEach(w=>{ const ex=(w.data&&w.data.ex)||[]; ex.forEach(e=>{
+    const logs=Array.isArray(e.log)?e.log:[];
+    const m=logs.length?Math.max.apply(null,logs.map(l=>numKg(l.kg))):numKg(e.kg);
+    if(m>0 && m>(maxKg[e.n]||0)) maxKg[e.n]=m; }); });
+  const tops=Object.keys(maxKg).map(n=>[n,maxKg[n]]).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    .map(p=>p[0]+" "+String(p[1]).replace(".",",")+" kg");
+  let s="Aktuelle Trainingsdaten aus Marcos Gym-App (automatisch synchronisiert — nutze diese echten Zahlen, erfinde keine): ";
+  s+="Letztes Training: "+last.workout_date+(last.summary?" — "+last.summary:"")+". ";
+  s+="Diese Woche "+week+" Einheit(en), insgesamt "+ws.length+" erfasst. ";
+  if(tops.length) s+="Aktuelle Bestwerte: "+tops.join("; ")+". ";
+  const recent=ws.slice(0,3).map(w=>w.workout_date+": "+(w.summary||w.type||"")).join(" | ");
+  if(recent) s+="Letzte Einheiten: "+recent+". ";
+  return s;
+}
 const MEM_KINDS=["fact","state","milestone"];
 function normCoach(c){ c=(c||"").toLowerCase().trim(); if(c==="core"||c==="all"||COACHES[c]) return c; return "core"; }
 function addItems(items){
@@ -1216,6 +1257,7 @@ function systemPrompt(id){
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
     memoryBlock(id)+
     rememberInstructions(id);
+  if(id==="deniz"||id==="viktor"){ const tb=trainingSummary(); if(tb) p+=tb; }
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
