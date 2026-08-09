@@ -680,7 +680,7 @@ function orbitLoop(nowT){
     const ang=Math.PI/2+i*Math.PI/3+t*OW+dragSpin+mouseSpin;
     const z=Math.sin(ang), f=(z+1)/2;
     const x=OCX+Math.cos(ang)*ORX*sp, y=OCY+Math.sin(ang)*ORY*sp;
-    const sc=(.12+1.18*f)*(.3+.7*Math.min(1,pe*1.15));
+    const sc=(.4+.9*f)*(.3+.7*Math.min(1,pe*1.15));
     o.style.left=(x-38).toFixed(1)+"px";
     o.style.top=(y-38).toFixed(1)+"px";
     o.style.transform="scale("+sc.toFixed(3)+")";
@@ -1369,11 +1369,12 @@ function revealSynced(id, clean, token, typ){
     try{ if(typ) typ.remove(); }catch(e){}
     setSpeakingUI(true, id);                    // Atmen/Aura/„spricht" genau ab Sprechbeginn
     line=el('<div class="tline">'+words.map(w=>'<span class="w">'+esc(w)+'</span>').join(" ")+'</div>');
-    log.appendChild(line); spans=line.querySelectorAll(".w"); log.scrollTop=log.scrollHeight;
+    log.appendChild(line); spans=line.querySelectorAll(".w");
+    log.scrollTop=Math.max(0, line.offsetTop-14);   // Anfang der Antwort oben zeigen, nicht dem Ende folgen
     const per=Math.max(45,(ms*0.94)/Math.max(1,words.length));
     rev=setInterval(()=>{
       if(token!==seqToken){ stop(); return; }
-      if(wi<spans.length){ spans[wi++].classList.add("on"); log.scrollTop=log.scrollHeight; }
+      if(wi<spans.length){ spans[wi++].classList.add("on"); }
       else stop();
     }, per);
   };
