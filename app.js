@@ -278,7 +278,7 @@ function startParallax(){
     _px+=(_tx-_px)*.07; _py+=(_ty-_py)*.07;
     const ow=document.getElementById("orbitwrap");
     const sy=window.scrollY||0;
-    const base=Math.min(1.04,(Math.min(window.innerWidth,480)-16)/330);
+    const base=Math.min(1.04,(Math.min(window.innerWidth,480)-16)/320);
     const shr=base*Math.max(.62,1-sy/560), op=Math.max(.2,1-sy/520);
     if(ow){ ow.style.transform="translate("+_px.toFixed(2)+"px,"+_py.toFixed(2)+"px) scale("+shr.toFixed(3)+")";
       ow.style.opacity=op.toFixed(2); }
@@ -628,7 +628,7 @@ function showChips(chips){
 }
 
 /* ===== Orbit ===== */
-const OCX=165, OCY=151, ORX=132, ORY=64, OW=(2*Math.PI)/140000;
+const OCX=160, OCY=88, ORX=126, ORY=44, OW=(2*Math.PI)/140000;
 let dragSpin=0, mouseSpin=0, mouseSpinT=0, _dragLast=null, _dragMoved=0;
 let orbEls=[], orbitT0=0, frontId="";
 const AVOK={};
@@ -636,8 +636,9 @@ function avatarInner(id){ return AVOK[id] ? '<img src="avatars/'+id+'.png" alt="
 function refreshOrbFaces(){
   orbEls.forEach(o=>{ const id=o.dataset.c;
     o.classList.toggle("hasimg",!!AVOK[id]);
+    const note=coachHasNote(id); o.classList.toggle("hasnote",note); if(note) o.style.setProperty("--pc",COACHES[id].hex);
     o.innerHTML=avatarInner(id)+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES[id].hex+'40"></span>'; });
-  if(typeof setCenterViktor==="function" && document.getElementById("centerorb") && document.getElementById("centerorb").innerHTML) try{ setCenterViktor(); }catch(e){}
+  if(typeof renderViktorHero==="function") try{ renderViktorHero(); }catch(e){}
   if(typeof renderStaticOrbs==="function") try{ renderStaticOrbs(); }catch(e){}
   if(typeof renderPicker==="function") try{ renderPicker(); }catch(e){}
   if(typeof renderCoachCards==="function") try{ renderCoachCards(); }catch(e){}
@@ -659,22 +660,33 @@ function renderOrbit(){
   document.getElementById("greeting").textContent=(h<11?"Guten Morgen":h<18?"Hallo":"Guten Abend")+", Marco";
   const wrap=document.getElementById("orbs"); wrap.innerHTML=""; orbEls=[];
   SPECIALISTS.forEach((id,i)=>{
-    const o=el('<div class="orb oorb" data-c="'+id+'" style="'+orbStyle(id)+';opacity:0">'+
+    const note=coachHasNote(id)?" hasnote":"";
+    const o=el('<div class="orb oorb'+note+'" data-c="'+id+'" style="'+orbStyle(id)+';opacity:0">'+
       avatarInner(id)+'<i class="sheen" style="animation-delay:-'+(i*3)+'s"></i><span class="ring"></span></div>');
+    if(note) o.style.setProperty("--pc", COACHES[id].hex);
     o.onclick=()=>flyOpen(id,o);
     wrap.appendChild(o); orbEls.push(o);
   });
-  setCenterViktor();
+  renderViktorHero();
   orbitT0=performance.now();
   requestAnimationFrame(orbitLoop);
-  orbitSay("viktor","Tages-Check-in", viktorBriefing(), "viktor");
 }
-function setCenterViktor(){
-  const cen=document.getElementById("centerorb"); if(!cen) return;
-  cen.setAttribute("style", orbStyle("viktor"));
-  cen.classList.add("orb"); cen.classList.toggle("hasimg", !!AVOK.viktor);
-  cen.innerHTML=avatarInner("viktor")+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES.viktor.hex+'66"></span>';
-  cen.onclick=()=>flyOpen("viktor",cen);
+function renderViktorHero(){
+  const o=document.getElementById("vheroorb"); if(!o) return;
+  o.setAttribute("style", orbStyle("viktor"));
+  o.classList.add("orb"); o.classList.toggle("hasimg", !!AVOK.viktor);
+  o.innerHTML=avatarInner("viktor")+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES.viktor.hex+'55"></span>';
+  o.onclick=()=>flyOpen("viktor",o);
+  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>flyOpen("viktor",o);
+}
+function coachHasNote(id){
+  const w=(typeof whoopData!=="undefined"&&whoopData&&whoopData.length)?whoopData[0]:null;
+  const wk=(typeof workoutData!=="undefined")?workoutData:null;
+  if(id==="deniz"){ if(w&&w.recovery!=null&&w.recovery<55) return true;
+    if(wk&&wk.length){ const days=(Date.now()-new Date(wk[0].workout_date).getTime())/864e5; if(days>3) return true; } return false; }
+  if(id==="elias"){ if(w&&w.sleep_hours!=null&&w.sleep_hours<6.5) return true; if(w&&w.recovery!=null&&w.recovery<45) return true; return false; }
+  if(id==="mara"){ if(w&&w.strain!=null&&w.strain>14) return true; if(w&&w.recovery!=null&&w.recovery<45) return true; return false; }
+  return false;
 }
 function viktorBriefing(){
   const bits=[];
@@ -696,8 +708,8 @@ function orbitLoop(nowT){
     const z=Math.sin(ang), f=(z+1)/2;
     const x=OCX+Math.cos(ang)*ORX*sp, y=OCY+Math.sin(ang)*ORY*sp;
     const sc=(.4+.9*f)*(.3+.7*Math.min(1,pe*1.15));
-    o.style.left=(x-38).toFixed(1)+"px";
-    o.style.top=(y-38).toFixed(1)+"px";
+    o.style.left=(x-32).toFixed(1)+"px";
+    o.style.top=(y-32).toFixed(1)+"px";
     o.style.transform="scale("+sc.toFixed(3)+")";
     o.style.opacity=(pe<=0?0:(.45+.55*f)*Math.min(1,pe*1.6)).toFixed(2);
     o.style.zIndex=String(20+Math.round(z*10));
@@ -726,7 +738,7 @@ function flyOpen(id, srcEl){
   setTimeout(()=>{ try{cl.remove();}catch(e){} }, 660);
 }
 function orbitSay(coachId,title,html,target){
-  const m=document.getElementById("orbitmsg");
+  const m=document.getElementById("orbitmsg"); if(!m) return;
   const c=COACHES[coachId];
   m.innerHTML='<span class="from" style="color:'+c.hex+'">'+c.name.toUpperCase()+' · '+title.toUpperCase()+'</span>'+html;
   m.onclick=()=>openCall(target||coachId);

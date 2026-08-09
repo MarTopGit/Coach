@@ -53,9 +53,18 @@ h1{font-family:var(--serif);font-weight:600;font-size:30px;
 .hasimg::after{display:none}
 .hasimg .ring{display:none}
 .hasimg{box-shadow:0 10px 26px rgba(0,0,0,.14)!important}
-#orbitwrap{position:relative;width:330px;height:300px;margin:10px auto 0;flex-shrink:0;transform-origin:center center}
+#vhero{display:flex;flex-direction:column;align-items:center;gap:13px;margin:6px 0 4px}
+#vheroorb{width:120px;height:120px;font-size:34px;cursor:pointer;
+  box-shadow:0 14px 38px rgba(139,127,240,.24),0 4px 12px rgba(0,0,0,.10)!important}
+#vherolabel{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:600}
+#checkinbtn{background:#8b7ff0;color:#fff;border:none;border-radius:99px;padding:13px 28px;font-size:15px;font-weight:600;
+  cursor:pointer;box-shadow:0 8px 22px rgba(139,127,240,.30);transition:transform .12s}
+#checkinbtn:active{transform:scale(.96)}
+#orbitwrap{position:relative;width:320px;height:180px;margin:16px auto 0;flex-shrink:0;transform-origin:center center}
 #orbitsvg{position:absolute;inset:0}
-.oorb{position:absolute;width:76px;height:76px;font-size:23px;cursor:pointer;will-change:transform,opacity}
+.oorb{position:absolute;width:64px;height:64px;font-size:20px;cursor:pointer;will-change:transform,opacity}
+.oorb.hasnote{animation:notepulse 2.6s ease-in-out infinite}
+@keyframes notepulse{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.12)}50%{box-shadow:0 8px 20px rgba(0,0,0,.12),0 0 18px 3px var(--pc,#8b7ff0)}}
 .sheen{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 #voicering{position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(0,0,0,.2);
@@ -310,31 +319,19 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     </div>
     <div id="homehero">
       <h1 id="greeting">Guten Morgen, Marco</h1>
+      <div id="vhero">
+        <div class="orb" id="vheroorb"></div>
+        <div id="vherolabel">Viktor · Head Coach</div>
+        <button id="checkinbtn">Check-in starten</button>
+      </div>
       <div id="orbitwrap">
-        <svg id="orbitsvg" width="330" height="300" viewBox="0 0 330 300">
-          <ellipse cx="165" cy="151" rx="128" ry="52" fill="none" stroke="rgba(0,0,0,.09)" stroke-dasharray="2 7"/>
-          <circle cx="165" cy="151" r="52" fill="none" stroke="rgba(0,0,0,.06)" stroke-width="4.5"/>
-          <circle id="recarc" cx="165" cy="151" r="52" fill="none" stroke="#f0a83c" stroke-width="4.5" stroke-linecap="round"
-            stroke-dasharray="0 327" transform="rotate(-90 165 151)" opacity=".9"/>
+        <svg id="orbitsvg" width="320" height="180" viewBox="0 0 320 180">
+          <ellipse cx="160" cy="88" rx="126" ry="44" fill="none" stroke="rgba(0,0,0,.08)" stroke-dasharray="2 7"/>
         </svg>
-        <div class="orb" id="centerorb">M</div>
         <div id="orbs"></div>
       </div>
-      <div id="frontname"></div>
     </div>
-    <div id="orbitmsg"></div>
-
-    <div class="sec">
-      <div class="glass fx fx-up" style="--d:.3s">
-        <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin-bottom:5px">Neu hier</div>
-        <div style="font-size:17px;font-weight:600;margin-bottom:6px">Dein Team lernt dich gerade kennen.</div>
-        <div style="font-size:13.5px;color:var(--text2);line-height:1.55;margin-bottom:14px">Sechs Coaches, ehrlich neugierig auf dich. Je mehr sie über dich wissen, desto besser wird dein Coaching. Fang mit irgendeinem an — sie fragen von selbst.</div>
-        <div style="display:flex;align-items:center;gap:10px">
-          <button class="chip action" id="startbtn" style="flex:1">Mit dem Team starten</button>
-          <div id="memcount" style="font-size:12px;color:var(--text3);font-weight:600;white-space:nowrap">0 gemerkt</div>
-        </div>
-      </div>
-    </div>
+    <div id="memcount" style="display:none">0 gemerkt</div>
   </div>
 
   <div class="view" id="view-coaches">
@@ -404,7 +401,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 47</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 48</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -525,6 +522,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=47"></script>
+<script src="app.js?v=48"></script>
 </body>
 </html>
