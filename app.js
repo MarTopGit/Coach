@@ -319,11 +319,11 @@ function startAura(){
       const env=Math.abs(0.55*Math.sin(t*7.3)+0.45*Math.sin(t*12.9+1.1));
       target=0.3+0.7*env;                            // Fallback (System-Stimme ohne Samples)
     }
-    auraAmp += (target-auraAmp)*0.3;                 // sanfte Glättung
-    const amp=Math.min(1,Math.max(.08,auraAmp));
+    auraAmp += (target-auraAmp)*0.16;                // weichere, trägere Glättung
+    const amp=Math.min(1,Math.max(.05,auraAmp));
     const vr=document.getElementById("voicering"), orb=document.getElementById("bigorb");
-    if(vr){ vr.style.opacity=(amp*.9).toFixed(2); vr.style.transform="scale("+(1+amp*.5).toFixed(3)+")"; vr.style.borderColor=curHex; }
-    if(orb) orb.style.boxShadow="0 6px "+(20+amp*70).toFixed(0)+"px "+curHex+(amp>.5?"66":"44")+", 0 3px 12px rgba(0,0,0,.12)";
+    if(vr){ vr.style.opacity=(amp*.42).toFixed(2); vr.style.transform="scale("+(1+amp*.14).toFixed(3)+")"; vr.style.borderColor=curHex; }
+    if(orb) orb.style.boxShadow="0 6px "+(16+amp*30).toFixed(0)+"px "+curHex+(amp>.55?"44":"22")+", 0 3px 12px rgba(0,0,0,.12)";
     auraRaf=requestAnimationFrame(loop);
   };
   auraRaf=requestAnimationFrame(loop);
@@ -775,10 +775,10 @@ function viktorBriefing(){
 function orbitLoop(nowT){
   const t=nowT-orbitT0;
   mouseSpin+=(mouseSpinT-mouseSpin)*0.06;
-  let bestZ=-2, bestId="", allIn=true;
+  let bestZ=-2, bestId="", allIn=true, minPe=1; const pts=[];
   orbEls.forEach((o,i)=>{
     const pe=Math.min(1,Math.max(0,(t-160-i*95)/850));
-    if(pe<1) allIn=false;
+    if(pe<1) allIn=false; if(pe<minPe) minPe=pe;
     const sp=pe<=0?0:easeOutBack(pe);
     const ang=Math.PI/2+i*(2*Math.PI/5)+t*OW+dragSpin+mouseSpin;
     const z=Math.sin(ang), f=(z+1)/2;
@@ -789,8 +789,11 @@ function orbitLoop(nowT){
     o.style.transform="scale("+sc.toFixed(3)+")";
     o.style.opacity=(pe<=0?0:(.45+.55*f)*Math.min(1,pe*1.6)).toFixed(2);
     o.style.zIndex=String(20+Math.round(z*10));
+    pts.push(x.toFixed(1)+","+y.toFixed(1));
     if(z>bestZ){ bestZ=z; bestId=o.dataset.c; }
   });
+  const net=document.getElementById("orbnet");
+  if(net){ net.setAttribute("points", pts.join(" ")); net.style.opacity=(minPe*0.9).toFixed(2); }
   if(allIn && bestId && bestId!==frontId){
     frontId=bestId;
     const fn=document.getElementById("frontname");
@@ -807,11 +810,11 @@ function flyOpen(id, srcEl){
   document.body.appendChild(cl);
   requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
     cl.style.left=(window.innerWidth/2-78)+"px";
-    cl.style.top=(86+window.innerHeight*0.025)+"px";
-    cl.style.width="124px"; cl.style.height="124px"; cl.style.fontSize="44px";
+    cl.style.top=(84+window.innerHeight*0.025)+"px";
+    cl.style.width="156px"; cl.style.height="156px"; cl.style.fontSize="54px";  // exakt Größe von #bigorb → nahtlose Übergabe
   }); });
-  setTimeout(()=>openCall(id), 280);
-  setTimeout(()=>{ try{cl.remove();}catch(e){} }, 660);
+  setTimeout(()=>openCall(id), 330);
+  setTimeout(()=>{ try{cl.remove();}catch(e){} }, 680);
 }
 function orbitSay(coachId,title,html,target){
   const m=document.getElementById("orbitmsg"); if(!m) return;
@@ -1236,7 +1239,10 @@ function openLiveRound(topic){
   log.appendChild(el('<div class="tsys">Team-Runde</div>'));
   log.appendChild(el('<div class="tme">'+esc(topic)+'</div>'));
   log.scrollTop=log.scrollHeight;
-  teamRespond("(Auftakt der Runde zu diesem Thema. Jeder Teilnehmer, der etwas beizutragen hat, meldet sich einmal kurz zu Wort — nicht nur einer. Danach läuft es als lockeres Gespräch weiter.)");
+  // Versammlung: Orbs fliegen zusammen, Halo + Chime, danach starten die Antworten
+  teamTransition(parts, [], ()=>{
+    teamRespond("(Auftakt der Runde zu diesem Thema. Jeder Teilnehmer, der etwas beizutragen hat, meldet sich einmal kurz zu Wort — nicht nur einer. Danach läuft es als lockeres Gespräch weiter.)");
+  });
 }
 function startRound(topic){
   if(!anthKey){ const th=document.getElementById("topichint"); if(th){ th.style.display="block"; th.textContent="Dafür braucht dein Team den Coach-Intelligenz-Key (⚙︎)."; } return; }

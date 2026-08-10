@@ -67,8 +67,8 @@ h1{font-family:var(--serif);font-weight:600;font-size:30px;
 @keyframes notepulse{0%,100%{box-shadow:0 8px 20px rgba(0,0,0,.12)}50%{box-shadow:0 8px 20px rgba(0,0,0,.12),0 0 18px 3px var(--pc,#8b7ff0)}}
 .sheen{display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
-#voicering{position:absolute;inset:-12px;border-radius:50%;border:2px solid rgba(0,0,0,.2);
-  opacity:0;pointer-events:none;transition:opacity .15s;z-index:1}
+#voicering{position:absolute;inset:-7px;border-radius:50%;border:1.5px solid rgba(0,0,0,.2);
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:1}
 #call.live .ringp{display:none}
 .oorb.pinging{animation:opulse 1.3s ease-in-out infinite}
 @keyframes opulse{0%,100%{box-shadow:0 0 16px var(--pc,#f06a9e)33}50%{box-shadow:0 0 44px var(--pc,#f06a9e)}}
@@ -219,9 +219,10 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
   padding:calc(14px + env(safe-area-inset-top)) 18px 8px}
 #call .cclose{background:rgba(0,0,0,.05);border:none;border-radius:50%;width:36px;height:36px;
   color:var(--text2);font-size:15px;cursor:pointer}
-#teamrow{position:relative;z-index:2;display:none;justify-content:center;gap:10px;padding:6px 0 0}
-#teamrow .orb{width:46px;height:46px;font-size:14px;opacity:.3;transition:all .4s ease;cursor:default}
-#teamrow .orb.activeSpk{opacity:1;transform:scale(1.24);box-shadow:0 0 26px var(--spk,rgba(0,0,0,.15))}
+#teamrow{position:relative;z-index:2;display:none;justify-content:center;align-items:center;gap:13px;padding:10px 0 2px}
+#teamrow .orb{width:52px;height:52px;font-size:15px;opacity:.72;transform:scale(.84);
+  transition:transform .5s cubic-bezier(.3,1,.3,1),opacity .5s ease,box-shadow .5s ease;cursor:default}
+#teamrow .orb.activeSpk{opacity:1;transform:scale(1.32);z-index:3;box-shadow:0 8px 30px var(--spk,rgba(0,0,0,.18))}
 #callcenter{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;padding-top:2.5vh;flex-shrink:0}
 #bigorbwrap{position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center}
 #bigorb{width:156px;height:156px;font-size:54px;transition:background .5s ease,box-shadow .5s ease;z-index:2}
@@ -320,14 +321,15 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
   pointer-events:none;background:radial-gradient(circle, rgba(139,127,240,.32), transparent 70%);animation:tshalo 1.15s ease forwards}
 @keyframes tshalo{0%{transform:scale(.3);opacity:0}35%{opacity:1}100%{transform:scale(2.3);opacity:0}}
 /* v57: Call-Eintritt — „der Coach dreht sich zu dir" */
-#call.igniting #callcenter{animation:centerin .64s cubic-bezier(.2,1,.36,1)}
-@keyframes centerin{from{opacity:0;transform:scale(.72);filter:blur(7px)}to{opacity:1;transform:none;filter:none}}
-#call.igniting #call-aura{animation:auraflash .82s ease}
-@keyframes auraflash{0%{opacity:0;transform:scale(1.35)}28%{opacity:1}100%{opacity:.95;transform:none}}
-#call.igniting #bigorb{animation:orbignite .72s cubic-bezier(.2,1,.36,1)}
-@keyframes orbignite{0%{transform:scale(.55);box-shadow:0 0 0 rgba(0,0,0,0)}
-  45%{box-shadow:0 6px 70px var(--coach)}100%{transform:scale(1)}}
-#call.igniting #transcript,#call.igniting #chips{animation:fade .7s ease .18s both}
+#call.igniting #callcenter{animation:centerin .5s ease}
+@keyframes centerin{from{opacity:.4}to{opacity:1}}
+#call.igniting #call-aura{animation:auraflash .8s ease}
+@keyframes auraflash{0%{opacity:.2}30%{opacity:1}100%{opacity:.95}}
+#call.igniting #bigorb{animation:orbignite .6s ease}
+@keyframes orbignite{0%{box-shadow:0 6px 12px rgba(0,0,0,.12)}45%{box-shadow:0 6px 40px var(--coach)}100%{box-shadow:0 6px 12px rgba(0,0,0,.12)}}
+#call.igniting #transcript,#call.igniting #chips{animation:fade .6s ease .1s both}
+#bigorb img{animation:imgin .45s ease}
+@keyframes imgin{from{opacity:0}to{opacity:1}}
 /* v57: Ruhe-Präsenz — Coach atmet leise, wenn er zuhört */
 #call.open:not(.speaking):not(.teammode) #bigorb{animation:idlebreath 5.2s ease-in-out infinite}
 @keyframes idlebreath{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
@@ -355,6 +357,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
       <div id="orbitwrap">
         <svg id="orbitsvg" width="320" height="180" viewBox="0 0 320 180">
           <ellipse cx="160" cy="88" rx="126" ry="44" fill="none" stroke="rgba(0,0,0,.08)" stroke-dasharray="2 7"/>
+          <polygon id="orbnet" fill="rgba(139,127,240,.05)" stroke="rgba(139,127,240,.20)" stroke-width="1" stroke-linejoin="round" points=""/>
         </svg>
         <div id="orbs"></div>
       </div>
@@ -430,7 +433,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 57</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 58</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -551,6 +554,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=57"></script>
+<script src="app.js?v=58"></script>
 </body>
 </html>
