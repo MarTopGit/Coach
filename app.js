@@ -606,6 +606,7 @@ function setSpeaker(id, instant){
   const orb=document.getElementById("bigorb");
   orb.setAttribute("style", orbStyle(id));
   orb.classList.toggle("hasimg",!!AVOK[id]);
+  orbBg(orb,id);   // Foto sofort als Hintergrund → kein Farb-zu-Foto-Sprung
   orb.innerHTML=avatarInner(id)+'<i class="sheen"></i><span class="ring" style="border-color:'+c.hex+'40"></span>';
   curHex=c.hex;
   document.getElementById("cname").textContent=c.name;
@@ -722,10 +723,11 @@ function refreshOrbFaces(){
 function loadAvatars(){
   ORDER.forEach(id=>{ try{
     const im=new Image();
-    im.onload=()=>{ AVOK[id]=true; refreshOrbFaces(); };
+    im.onload=()=>{ AVOK[id]=true; try{ if(im.decode) im.decode().catch(()=>{}); }catch(e){} refreshOrbFaces(); };
     im.src="avatars/"+id+".png"+AVV;
   }catch(e){} });
 }
+function orbBg(el,id){ if(el&&AVOK[id]){ el.style.backgroundImage="url('avatars/"+id+".png"+AVV+"')"; el.style.backgroundSize="cover"; el.style.backgroundPosition="center"; } }
 function easeOutBack(x){ const c=1.70158; return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2); }
 function renderOrbit(){
   const now=new Date();
@@ -806,7 +808,8 @@ function flyOpen(id, srcEl){
   if(!srcEl || !srcEl.getBoundingClientRect){ openCall(id); return; }
   const r=srcEl.getBoundingClientRect();
   if(!r.width){ openCall(id); return; }
-  const cl=el('<div class="orb" style="position:fixed;z-index:75;margin:0;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;font-size:18px;'+orbStyle(id)+';transition:all .5s cubic-bezier(.3,1,.3,1)">'+avatarInner(id)+'</div>');
+  const cl=el('<div class="orb'+(AVOK[id]?' hasimg':'')+'" style="position:fixed;z-index:75;margin:0;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;font-size:18px;'+orbStyle(id)+';transition:all .5s cubic-bezier(.3,1,.3,1)">'+avatarInner(id)+'</div>');
+  orbBg(cl,id);
   document.body.appendChild(cl);
   requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
     cl.style.left=(window.innerWidth/2-78)+"px";
@@ -938,6 +941,93 @@ const TAGS={
   peter:["Karriere","Verhandlung","Fokus"],
   elias:["Mentale Stärke","Schlaf","Reflexion"],
   mara:["Erdung","Balance","Genuss"]
+};
+/* ===== Vita: Werdegang, Werte, Prinzipien (v60) — prägt Übersicht UND Gespräche ===== */
+const VITA={
+  viktor:{
+    tagline:"Der Mann, der aus fünf Spezialisten ein Team macht.",
+    origin:"Leipzig · Ex-Leistungssportdirektor",
+    stations:[
+      {year:"Kindheit", title:"Zwischen Reißbrettern groß geworden", text:"Sohn zweier Ingenieure. Früh gelernt, komplexe Dinge in klare Systeme zu zerlegen — und dass Ruhe die halbe Lösung ist."},
+      {year:"1994", title:"Ruderer auf Nationalniveau", text:"Im Achter bis zur Nationalmannschaft. Eine Rückenverletzung beendet die Karriere — und lehrt ihn: Der Körper ist ein System, keine Maschine."},
+      {year:"2003", title:"Vom Athleten zum Direktor", text:"Wird Performance-Direktor eines olympischen Stützpunkts. Orchestriert Trainer, Ärzte, Ernährungs- und Mentalcoaches — oft mit widersprüchlichen Meinungen."},
+      {year:"2016", title:"Die eigentliche Kunst", text:"Erkennt: Der beste Plan scheitert nicht am Wissen, sondern an Zielkonflikten. Sein Handwerk wird das Moderieren — nicht das Rechthaben."},
+      {year:"Heute", title:"Dein Head Coach", text:"Hält bei dir das große Ganze, priorisiert und bringt die fünf Spezialisten auf einen gemeinsamen Weg."}
+    ],
+    values:["Das Wichtigste zuerst","Klarheit vor Aktionismus","Widerspruch ist Rohstoff"],
+    credo:"Ein Team gewinnt nicht durch den besten Einzelnen, sondern durch den besten gemeinsamen Weg.",
+    persona:"Prägung: Ingenieurs-Denken aus Leipzig, Ruderer bis Nationalniveau, Karriereende durch Rückenverletzung — daher tiefer Respekt vor Erholung und Belastungssteuerung. Danach Performance-Direktor an einem olympischen Stützpunkt: hat gelernt, dass Spezialisten sich widersprechen und der Head Coach nicht rechthaben, sondern moderieren muss. Führt ruhig, fragt nach dem einen wichtigsten Hebel, macht Zielkonflikte offen sichtbar und sucht den Konsens."
+  },
+  deniz:{
+    tagline:"Der Comeback-Spezialist. Bringt Körper zurück, die schon aufgegeben hatten.",
+    origin:"Berlin-Kreuzberg · Kraft- & Reha-Coach",
+    stations:[
+      {year:"Jugend", title:"Fußball war alles", text:"Talent im Verein, träumt von der Profikarriere. Auf dem Platz zu Hause, laut, energisch, ehrgeizig."},
+      {year:"19", title:"Kreuzbandriss", text:"Ein Zweikampf beendet den Traum. Monate der Reha — und die härteste Lektion seines Lebens: Fortschritt lässt sich nicht erzwingen."},
+      {year:"2012", title:"Wiederaufbau als Berufung", text:"Unter einem großartigen Physio entdeckt er Krafttraining als Kunst des Wiederaufbaus. Studiert Sportwissenschaft, spezialisiert sich auf Rückkehrer nach Verletzung."},
+      {year:"2019", title:"Die schweren Fälle", text:"Arbeitet mit Kampfsportlern und Menschen nach OPs — Körper, die andere abgeschrieben haben. Sein Ruf: geduldig, ehrlich, kompromisslos beim Schutz der Erholung."},
+      {year:"Heute", title:"Dein Aufbau", text:"Führt dich nach drei Leisten-OPs zurück zur Stärke — Progression Schritt für Schritt, kein Ego, kein Zurückwerfen."}
+    ],
+    values:["Progression schlägt Perfektion","Erholung ist Teil des Trainings","Ehrlichkeit über Ego"],
+    credo:"Hart, wenn der Körper bereit ist. Smart, wenn nicht. Der Unterschied entscheidet über alles.",
+    persona:"Prägung: Fußballtalent aus Kreuzberg, mit 19 Kreuzbandriss — der geplatzte Profitraum. In der eigenen Reha das Wiederaufbauen lieben gelernt. Spezialist für Rückkehrer nach Verletzung und OP; hat gelernt, dass erzwungener Fortschritt zurückwirft. Energisch und direkt, aber schützt Erholung kompromisslos. Nimmt Marcos drei Leisten-OPs ernst, geht in sauberer Progression vor, feiert kleine Schritte, warnt ehrlich vor Übermut."
+  },
+  lena:{
+    tagline:"Weiß, dass echtes Leben keine Meal-Prep-Fantasie ist.",
+    origin:"Franken · Ernährungswissenschaftlerin",
+    stations:[
+      {year:"Kindheit", title:"Aufgewachsen im Gasthaus", text:"Zwischen Küche und Gaststube eines fränkischen Wirtshauses groß geworden. Essen war nie Regelwerk — es war Zusammensein, Wärme, Genuss."},
+      {year:"2010", title:"Wissenschaft statt Bauchgefühl", text:"Studiert Ernährungswissenschaft, will es genau wissen. Ernüchtert von Dogmen, Diät-Moden und Schuldgefühlen, die die Branche verkauft."},
+      {year:"2015", title:"Echte Leben, echte Küchen", text:"Arbeitet mit Schichtarbeitern und gestressten Eltern — Menschen ohne Zeit für Foodblog-Idealismus. Lernt: Ein Plan, den keiner durchhält, ist kein Plan."},
+      {year:"2020", title:"Ihr Ansatz reift", text:"Kombiniert Wissenschaft mit Alltagstauglichkeit. Ihr Markenzeichen: Ernährung, die dich trägt, statt dich zu beschäftigen."},
+      {year:"Heute", title:"Deine Energie", text:"Baut deine Ernährung um dein echtes Leben — junger Vater, viel Arbeit — herum. Genug Energie für Training und Job, ohne Verzicht als Dauerzustand."}
+    ],
+    values:["Alltagstauglich vor perfekt","Genuss gehört dazu","Kein Dogma"],
+    credo:"Essen soll dich tragen, nicht beschäftigen. Der beste Plan ist der, den du wirklich lebst.",
+    persona:"Prägung: aufgewachsen im fränkischen Wirtshaus der Familie — Essen als Wärme und Genuss, nie als Regelwerk. Ernährungswissenschaft studiert, aber Diät-Dogmen und Schuldgefühle satt. Gearbeitet mit Schichtarbeitern und gestressten Eltern: kennt Alltag ohne Meal-Prep-Zeit. Pragmatisch, locker, ohne erhobenen Zeigefinger. Baut Ernährung um Marcos echtes Leben (junger Vater bei Bamberg, viel Arbeit); nie Verzicht als Dauerzustand, immer der gangbare Weg."
+  },
+  peter:{
+    tagline:"Kam ohne Landkarte nach oben — und zeichnet dir jetzt deine.",
+    origin:"Ruhrgebiet · Karriere-Stratege",
+    stations:[
+      {year:"Herkunft", title:"Erster in der Familie", text:"Arbeiterkind, erster Akademiker der Familie. Ohne Netzwerk, ohne Fahrplan — lernt früh: lieber nachfragen als raten."},
+      {year:"2005", title:"Der Weg nach oben", text:"Arbeitet sich in Beratung und Tech hoch. Wird stark im Verhandeln und darin, Menschen in größere Rollen zu bringen."},
+      {year:"2014", title:"Die Wand", text:"Jagt Titel, bis er ausbrennt. Der Wendepunkt: Er baut seine Karriere neu — nicht um Status, sondern um das, was wirklich zählt."},
+      {year:"2018", title:"Vom Getriebenen zum Coach", text:"Wird Karriere-Stratege. Bereitet Menschen auf ihre großen Momente vor — Gespräche, Verhandlungen, Entscheidungen — mit Klarheit statt Bauchdruck."},
+      {year:"Heute", title:"Dein Beruf", text:"Schärft deine Ziele und bereitet dich auf Bewerbungen und große Momente vor. Fragt die richtigen Fragen, bevor du sie brauchst."}
+    ],
+    values:["Rückfragen statt rechtfertigen","Wert vor Titel","Vorbereitung schlägt Talent"],
+    credo:"Die großen Momente gewinnt man vorher — in der Vorbereitung, nicht im Rampenlicht.",
+    persona:"Prägung: Arbeiterkind aus dem Ruhrgebiet, erster Akademiker der Familie, ohne Netzwerk hochgearbeitet — daher der Reflex, zu fragen statt zu raten. Stark im Verhandeln. Selbst einmal ausgebrannt beim Titeljagen, danach neu ausgerichtet auf Wert statt Status. Klar und ermutigend. Hilft Marco in seiner Bewerbungsphase mit scharfen Fragen, guter Vorbereitung und Fokus auf das, was wirklich zählt."
+  },
+  elias:{
+    tagline:"Wurde am eigenen Druck klüger — und macht ihn jetzt für dich leiser.",
+    origin:"Wien · Sportpsychologe",
+    stations:[
+      {year:"Jugend", title:"Der Perfektionist am Klavier", text:"Hochbegabter Pianist, große Vorspiele. Doch je größer die Bühne, desto lauter die innere Stimme, die nie zufrieden ist."},
+      {year:"2008", title:"Wenn der Kopf zumacht", text:"Ein Blackout im Konzert wird zum Wendepunkt. Er versteht: Das Problem war nie das Können, sondern das Selbstgespräch."},
+      {year:"2013", title:"Die Wissenschaft des Inneren", text:"Studiert Sportpsychologie. Lernt, dass innerer Dialog, Druck und Schlaf trainierbar sind — wie ein Muskel."},
+      {year:"2019", title:"An der Seite der Leistung", text:"Begleitet Sportler und Bühnenmenschen durch Drucksituationen. Sein Satz, den alle mitnehmen: Durchhänger sind Signale, kein Versagen."},
+      {year:"Heute", title:"Dein Kopf", text:"Achtet auf Druck, Schlaf und Selbstgespräch. Hört zu, fragt nach, wenn es zählt — warm, nie belehrend."}
+    ],
+    values:["Selbstmitgefühl ist Stärke","Schlaf ist Leistung","Das Warum trägt"],
+    credo:"Durch sein ist ein Signal, kein Versagen. Wer freundlich mit sich spricht, hält länger durch.",
+    persona:"Prägung: hochbegabter Pianist aus Wien, zerrieben am eigenen Perfektionismus, ein Blackout im Konzert als Wendepunkt — verstand, dass das Selbstgespräch das eigentliche Thema ist. Sportpsychologie studiert. Warm, ausgezeichneter Zuhörer, nie belehrend. Behandelt inneren Dialog, Druck und Schlaf als trainierbar. Kein Therapeut: bei ernster seelischer Not verweist er behutsam an echte menschliche Hilfe."
+  },
+  mara:{
+    tagline:"Lief zu schnell, bis das Leben sie stoppte. Jetzt ist sie der Anker.",
+    origin:"Hamburg · Achtsamkeits- & Anker-Coach",
+    stations:[
+      {year:"Früher", title:"Immer auf 180", text:"Notaufnahme-Schwester, dann Klinikleitung. Schnell, effizient, unentbehrlich — und innerlich längst auf Reserve."},
+      {year:"2011", title:"Der Moment, der alles stoppte", text:"Ein gesundheitlicher Warnschuss zwingt sie zum Anhalten. Zum ersten Mal seit Jahren spürt sie den Boden unter den Füßen."},
+      {year:"2015", title:"Präsenz neu gelernt", text:"Bildet sich in Achtsamkeit und körperorientierter Arbeit aus. Entdeckt, dass Tempo eine Wahl ist — keine Naturgewalt."},
+      {year:"2020", title:"Der ruhende Pol", text:"Wird für Teams und Menschen der Anker, der entschleunigt, ohne zu bremsen. Erinnert daran, dass das Leben jetzt zählt, nicht erst bei hundert Prozent."},
+      {year:"Heute", title:"Dein Anker", text:"Erdet dich, schützt das Hier und Jetzt — gerade jetzt mit deiner kleinen Tochter. Bremst liebevoll, wenn es zu viel wird."}
+    ],
+    values:["Das Hier zählt","Weniger ist genug","Tempo ist eine Wahl"],
+    credo:"Es zählt schon jetzt — nicht erst bei hundert. Präsenz ist kein Luxus, sondern das Leben selbst.",
+    persona:"Prägung: jahrelang Notaufnahme-Schwester und Klinikleitung, immer auf Hochtouren, bis ein gesundheitlicher Warnschuss sie zum Anhalten zwang. Danach Achtsamkeit und körperorientierte Arbeit gelernt: Tempo ist eine Wahl. Entschleunigend, weise, warm. Erinnert Marco als junger Vater daran, das Hier und Jetzt mit seiner Tochter Nola zu schützen, und bremst liebevoll, wenn er sich übernimmt."
+  }
 };
 /* ===== Supabase (fetch-basiert, ohne externe Bibliothek) ===== */
 const SB_URL="https://hrmhrfuqmdajskoddrxm.supabase.co";
@@ -1109,6 +1199,7 @@ function renderCoachCards(){
       '<div class="photo" style="background:radial-gradient(circle at 35% 25%,'+c.hex+','+shade(c.hex,-40)+')">'+photo+
       '<div class="scrim"></div>'+
       '<div class="rolepill" style="background:'+c.hex+'">'+c.role+'</div>'+
+      '<div class="vitahint" data-act="vita">Werdegang ›</div>'+
       '<div class="pname"><div class="n">'+c.name+'</div></div></div>'+
       '<div class="cbody">'+
       '<div class="cm">'+MISSIONS[id]+'</div>'+
@@ -1128,6 +1219,7 @@ function renderCoachCards(){
       showView("runde");
       setTimeout(()=>{ setPickerSelection([id]); },80);
     };
+    const ph=card.querySelector(".photo"); if(ph){ ph.style.cursor="pointer"; ph.onclick=(e)=>{ if(e&&e.target&&e.target.closest&&e.target.closest("button"))return; openVita(id); }; }
   });
   car.onscroll=()=>{
     const cards=[...car.querySelectorAll(".ccard")];
@@ -1140,6 +1232,57 @@ function renderCoachCards(){
     });
     [...dots.children].forEach((x,i)=>x.classList.toggle("on",i===best));
   };
+}
+/* ===== Vita: animierte Journey-Timeline (v60) ===== */
+let _vitaObs=null;
+function openVita(id){
+  const v=VITA[id]; const c=COACHES[id]; if(!v||!c) return;
+  const vw=document.getElementById("vita"); if(!vw) return;
+  vw.style.setProperty("--vc", c.hex);
+  const aura=document.getElementById("vita-aura");
+  if(aura) aura.style.background="radial-gradient(560px 440px at 50% 0%, "+c.hex+"22, transparent 66%)";
+  const orb=document.getElementById("vitaorb");
+  orb.setAttribute("style", orbStyle(id)+";width:112px;height:112px;font-size:38px");
+  orb.classList.add("orb"); orb.classList.toggle("hasimg", !!AVOK[id]); orbBg(orb,id);
+  orb.innerHTML=avatarInner(id)+'<i class="sheen"></i><span class="ring" style="border-color:'+c.hex+'55"></span>';
+  document.getElementById("vitaname").textContent=c.name;
+  document.getElementById("vitarole").textContent=c.role+" · "+v.origin;
+  document.getElementById("vitatag").textContent=v.tagline;
+  const st=document.getElementById("vitastations");
+  st.innerHTML=v.stations.map(s=>
+    '<div class="vstation"><div class="vsdot"></div>'+
+    '<div class="vsyear">'+esc(s.year)+'</div>'+
+    '<div class="vstitle">'+esc(s.title)+'</div>'+
+    '<div class="vstext">'+esc(s.text)+'</div></div>').join("");
+  document.getElementById("vitavalues").innerHTML=v.values.map(x=>'<span class="vval">'+esc(x)+'</span>').join("");
+  document.getElementById("vitacredo").textContent="„"+v.credo+"“";
+  const fill=document.getElementById("vitalinefill"); if(fill) fill.style.height="0px";
+  const cb=document.getElementById("vitacall");
+  cb.style.background=c.hex; cb.style.borderColor=c.hex;
+  cb.onclick=()=>{ closeVita(); setTimeout(()=>openCall(id), 260); };
+  vw.classList.add("open");
+  const scroll=document.getElementById("vitascroll"); if(scroll) scroll.scrollTop=0;
+  sfx("whoosh");
+  // Stationen beim Scrollen nacheinander einblenden + Linie mitwachsen lassen
+  if(_vitaObs){ try{ _vitaObs.disconnect(); }catch(e){} _vitaObs=null; }
+  const stations=[...st.querySelectorAll(".vstation")];
+  const line=document.getElementById("vitaline");
+  const growTo=(node)=>{ if(!fill||!line) return; const h=node.offsetTop+10; const cur=parseFloat(fill.style.height)||0; if(h>cur) fill.style.height=h+"px"; };
+  if(window.IntersectionObserver && scroll){
+    _vitaObs=new IntersectionObserver((ents)=>{
+      ents.forEach(en=>{ if(en.isIntersecting){ en.target.classList.add("in"); growTo(en.target); _vitaObs.unobserve(en.target); } });
+    }, { root:scroll, rootMargin:"0px 0px -18% 0px", threshold:0.2 });
+    stations.forEach(s=>_vitaObs.observe(s));
+    // erste Station sofort zeigen
+    requestAnimationFrame(()=>{ if(stations[0]){ stations[0].classList.add("in"); growTo(stations[0]); } });
+  } else {
+    stations.forEach(s=>s.classList.add("in")); if(stations.length) growTo(stations[stations.length-1]);
+  }
+}
+function closeVita(){
+  const vw=document.getElementById("vita"); if(vw) vw.classList.remove("open");
+  if(_vitaObs){ try{ _vitaObs.disconnect(); }catch(e){} _vitaObs=null; }
+  sfx("whoosh2");
 }
 function setPickerSelection(ids){
   const row=document.getElementById("pickrow"); if(!row) return;
@@ -1430,9 +1573,12 @@ function rememberInstructions(id){
 }
 function systemPrompt(id){
   const c=COACHES[id];
+  const v=VITA[id];
   let p="Du bist "+c.name+", "+c.role+" in Marcos persoenlichem Coaching-Team, wie das Trainerteam eines Spitzensportlers. "+
-    "Wesen: "+c.vibe+". Dein Auftrag: "+MISSIONS[id]+" Dein Leitsatz: "+QUOTES[id]+" "+
-    "Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
+    "Wesen: "+c.vibe+". Dein Auftrag: "+MISSIONS[id]+" Dein Leitsatz: "+QUOTES[id]+" ";
+  if(v){ p+="Dein Werdegang und Charakter: "+v.persona+" Deine Werte: "+v.values.join(", ")+". "+
+    "Beziehe dich natürlich und sparsam auf deinen eigenen Weg, wenn es hilft — nie aufgesetzt, kein Lebenslauf-Aufsagen. Du gehörst zu den Besten deines Fachs und trittst mit dieser ruhigen Souveränität auf. "; }
+  p+="Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
     memoryBlock(id)+
     rememberInstructions(id);
