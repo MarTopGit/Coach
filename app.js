@@ -11,6 +11,7 @@ const COACHES = {
 };
 const ORDER = Object.keys(COACHES);
 const SPECIALISTS = ORDER.filter(id=>id!=="viktor"); // v43: Viktor ist der Kern, diese 5 umkreisen ihn
+const AVV="?v=53"; // Avatar-Cache-Bust (früh definiert, da loadAvatars zeitig läuft)
 
 const DEMO = {
   recovery: 64, sleep:"5 h 40 min", hrv:"38 ms",
@@ -632,7 +633,6 @@ const OCX=160, OCY=88, ORX=126, ORY=44, OW=(2*Math.PI)/140000;
 let dragSpin=0, mouseSpin=0, mouseSpinT=0, _dragLast=null, _dragMoved=0;
 let orbEls=[], orbitT0=0, frontId="";
 const AVOK={};
-const AVV="?v=51";
 function avatarInner(id){ return AVOK[id] ? '<img src="avatars/'+id+'.png'+AVV+'" alt="">' : COACHES[id].ini; }
 function refreshOrbFaces(){
   orbEls.forEach(o=>{ const id=o.dataset.c;
@@ -1696,84 +1696,97 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   };
 })();
 
-/* v50: Freihand-Voice — bevorzugt ElevenLabs Scribe (genau), sonst Browser-Erkennung */
+/* v53: Sprach-erst Chatleiste — großer Aufnahme-Knopf + Umschalter (Scribe, sonst Browser) */
 (function(){
-  const mic=document.getElementById("micbtn"); if(!mic) return;
+  const recbtn=document.getElementById("recbtn"), modeswitch=document.getElementById("modeswitch");
+  const reclabel=document.getElementById("reclabel");
+  const chatinput=document.getElementById("chatinput"), chatsend=document.getElementById("chatsend");
+  if(!recbtn||!modeswitch||!chatinput) return;
   const canRec=!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!canRec && !SR){ mic.style.display="none"; return; }
-  const inp=()=>document.getElementById("chatinput");
-  function ph(t){ const i=inp(); if(i) i.setAttribute("placeholder", t); }
-  const PH_DEFAULT="Schreib oder tippe aufs Mikro…";
+  const voicePossible = canRec || !!SR;
+  let scribeBroken=false;
+  const setLabel=(t)=>{ if(reclabel) reclabel.textContent=t; };
 
-  /* ---- Scribe (Aufnahme → Transkription) ---- */
+  function setMode(m){
+    const voice=(m==="voice");
+    recbtn.style.display=voice?"flex":"none";
+    chatinput.style.display=voice?"none":"";
+    chatsend.style.display=voice?"none":"";
+    modeswitch.textContent=voice?"⌨︎":"🎤";
+    modeswitch.setAttribute("aria-label", voice?"Zur Tastatur":"Zur Sprache");
+    if(!voice) setTimeout(()=>{ try{ chatinput.focus(); }catch(e){} },50);
+  }
+  if(voicePossible) setMode("voice"); else { setMode("text"); modeswitch.style.display="none"; }
+  modeswitch.onclick=()=>{ if(recording||srListening) return; setMode(recbtn.style.display==="none"?"voice":"text"); };
+
+  /* Scribe (Aufnahme → ElevenLabs) */
   let mediaRec=null, chunks=[], stream=null, recording=false, busy=false, mime="";
   async function startScribe(){
     try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(e){ if(SR){ startSR(); return; } ph("Mikrofon nicht erlaubt"); setTimeout(()=>ph(PH_DEFAULT),2500); return; }
+    catch(e){ if(SR){ startSR(); return; } setLabel("Mikro nicht erlaubt"); setTimeout(()=>setLabel("Sprechen"),2500); return; }
     chunks=[]; mime="";
-    try{ if(window.MediaRecorder.isTypeSupported("audio/webm")) mime="audio/webm";
-      else if(window.MediaRecorder.isTypeSupported("audio/mp4")) mime="audio/mp4"; }catch(e){}
+    try{ if(window.MediaRecorder.isTypeSupported("audio/webm")) mime="audio/webm"; else if(window.MediaRecorder.isTypeSupported("audio/mp4")) mime="audio/mp4"; }catch(e){}
     try{ mediaRec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream); }
     catch(e){ try{ mediaRec=new MediaRecorder(stream); }catch(e2){ if(SR){ startSR(); return; } return; } }
     mediaRec.ondataavailable=(ev)=>{ if(ev.data&&ev.data.size) chunks.push(ev.data); };
     mediaRec.onstop=finishScribe;
     try{ mediaRec.start(); }catch(e){ if(SR){ startSR(); return; } return; }
-    recording=true; mic.classList.add("listening");
+    recording=true; recbtn.classList.add("rec"); setLabel("Stopp");
   }
-  function stopScribe(){
-    recording=false; mic.classList.remove("listening");
-    try{ if(mediaRec && mediaRec.state!=="inactive") mediaRec.stop(); }catch(e){}
-  }
+  function stopScribe(){ recording=false; recbtn.classList.remove("rec"); try{ if(mediaRec && mediaRec.state!=="inactive") mediaRec.stop(); }catch(e){} }
   async function finishScribe(){
     try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
     const type=(mediaRec&&mediaRec.mimeType)||mime||"audio/webm";
     const blob=new Blob(chunks,{type});
-    if(!blob.size){ return; }
-    busy=true; mic.classList.add("busy"); ph("… wird erkannt");
+    if(!blob.size){ setLabel("Sprechen"); return; }
+    busy=true; recbtn.classList.add("busy"); setLabel("… wird erkannt");
     try{
       const fd=new FormData();
       fd.append("file", blob, type.indexOf("mp4")>=0?"audio.mp4":"audio.webm");
-      fd.append("model_id","scribe_v1");
-      fd.append("language_code","de");
+      fd.append("model_id","scribe_v1"); fd.append("language_code","de");
       const r=await fetch("https://api.elevenlabs.io/v1/speech-to-text",{ method:"POST", headers:{ "xi-api-key":elKey }, body:fd });
-      if(!r.ok){ const t=await r.text(); throw new Error("HTTP "+r.status+" "+t.slice(0,80)); }
-      const d=await r.json();
-      const text=((d&&d.text)||"").trim();
-      busy=false; mic.classList.remove("busy"); ph(PH_DEFAULT);
-      if(text){ const i=inp(); if(i) i.value=text; sendChat(); }
-      else { ph("Nichts verstanden — nochmal?"); setTimeout(()=>ph(PH_DEFAULT),2500); }
+      if(!r.ok){ const t=await r.text(); throw new Error(r.status+(t?(" "+t.slice(0,120)):"")); }
+      const d=await r.json(); const text=((d&&d.text)||"").trim();
+      busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen");
+      if(text){ chatinput.value=text; sendChat(); }
+      else { setLabel("Nichts verstanden"); setTimeout(()=>setLabel("Sprechen"),2200); }
     }catch(e){
-      busy=false; mic.classList.remove("busy"); ph("Erkennung fehlgeschlagen — nochmal?"); setTimeout(()=>ph(PH_DEFAULT),2800);
+      busy=false; recbtn.classList.remove("busy");
+      try{ console.error("Scribe-Fehler:", e); }catch(_){}
+      const msg=String(e&&e.message||e);
+      if(SR && /^(401|403|404|422|429)/.test(msg)){ scribeBroken=true; setLabel("Studio-STT n/v — Browser"); setTimeout(()=>setLabel("Sprechen"),2600); }
+      else { setLabel("Fehler "+msg.slice(0,24)); setTimeout(()=>setLabel("Sprechen"),3200); }
     }
   }
 
-  /* ---- Fallback: Browser-Spracherkennung ---- */
+  /* Browser-Spracherkennung (Fallback) */
   let rec=null, srListening=false, finalText="";
   function startSR(){
-    if(!SR){ return; }
+    if(!SR){ setLabel("Sprache n/v"); setTimeout(()=>setLabel("Sprechen"),2000); return; }
     finalText="";
     try{
       rec=new SR(); rec.lang="de-DE"; rec.interimResults=true; rec.continuous=true; rec.maxAlternatives=1;
-      rec.onstart=()=>{ srListening=true; mic.classList.add("listening"); };
-      rec.onresult=(e)=>{ let interim=""; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) finalText+=r[0].transcript+" "; else interim+=r[0].transcript; } const el2=inp(); if(el2) el2.value=(finalText+interim).replace(/\s{2,}/g," ").trim(); };
+      rec.onstart=()=>{ srListening=true; recbtn.classList.add("rec"); setLabel("Stopp"); };
+      rec.onresult=(e)=>{ let interim=""; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) finalText+=r[0].transcript+" "; else interim+=r[0].transcript; } chatinput.value=(finalText+interim).replace(/\s{2,}/g," ").trim(); };
       rec.onerror=(ev)=>{ if(ev&&(ev.error==="no-speech"||ev.error==="aborted")) return; stopSR(false); };
       rec.onend=()=>{ if(srListening){ try{ rec.start(); }catch(e){} } };
       try{ unlockAudio(); }catch(e){}
       rec.start();
-    }catch(e){ srListening=false; mic.classList.remove("listening"); }
+    }catch(e){ srListening=false; recbtn.classList.remove("rec"); setLabel("Sprechen"); }
   }
   function stopSR(send){
-    srListening=false; mic.classList.remove("listening");
+    srListening=false; recbtn.classList.remove("rec"); setLabel("Sprechen");
     if(rec){ try{ rec.onend=null; rec.stop(); }catch(e){} }
-    if(send){ const i=inp(); const t=((i&&i.value)||"").trim(); if(t) sendChat(); }
+    if(send){ const t=(chatinput.value||"").trim(); if(t) sendChat(); }
   }
 
-  mic.onclick=()=>{
+  recbtn.onclick=()=>{
     if(busy) return;
-    if(elKey && canRec){ recording ? stopScribe() : startScribe(); }
+    const useScribe = elKey && canRec && !scribeBroken;
+    if(useScribe){ recording ? stopScribe() : startScribe(); }
     else if(SR){ srListening ? stopSR(true) : startSR(); }
-    else { ph("Für genaue Sprache: ElevenLabs-Key im ⚙︎"); setTimeout(()=>ph(PH_DEFAULT),2600); }
+    else { setMode("text"); }
   };
 })();
 
