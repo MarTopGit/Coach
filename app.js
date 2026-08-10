@@ -1731,15 +1731,18 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
     catch(e){ try{ mediaRec=new MediaRecorder(stream); }catch(e2){ if(SR){ startSR(); return; } return; } }
     mediaRec.ondataavailable=(ev)=>{ if(ev.data&&ev.data.size) chunks.push(ev.data); };
     mediaRec.onstop=finishScribe;
-    try{ mediaRec.start(); }catch(e){ if(SR){ startSR(); return; } return; }
+    try{ mediaRec.start(400); }catch(e){ try{ mediaRec.start(); }catch(e2){ if(SR){ startSR(); return; } return; } } // Zeitintervall → iOS liefert Daten
     recording=true; recbtn.classList.add("rec"); setLabel("Stopp");
   }
-  function stopScribe(){ recording=false; recbtn.classList.remove("rec"); try{ if(mediaRec && mediaRec.state!=="inactive") mediaRec.stop(); }catch(e){} }
+  function stopScribe(){
+    recording=false; recbtn.classList.remove("rec");
+    try{ if(mediaRec && mediaRec.state!=="inactive"){ try{ mediaRec.requestData(); }catch(e){} mediaRec.stop(); } }catch(e){}
+  }
   async function finishScribe(){
     try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
     const type=(mediaRec&&mediaRec.mimeType)||mime||"audio/webm";
     const blob=new Blob(chunks,{type});
-    if(!blob.size){ setLabel("Sprechen"); return; }
+    if(!blob.size){ setLabel("Nichts aufgenommen"); setTimeout(()=>setLabel("Sprechen"),2200); return; }
     busy=true; recbtn.classList.add("busy"); setLabel("… wird erkannt");
     try{
       const fd=new FormData();
