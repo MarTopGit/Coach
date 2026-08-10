@@ -1721,29 +1721,33 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   modeswitch.onclick=()=>{ if(recording||srListening) return; setMode(recbtn.style.display==="none"?"voice":"text"); };
 
   /* Scribe (Aufnahme → ElevenLabs) */
-  let mediaRec=null, chunks=[], stream=null, recording=false, busy=false, mime="";
+  let mediaRec=null, chunks=[], stream=null, recording=false, busy=false, mime="", finalizing=false;
+  function sysMsg(t){ try{ addMsg("sys", t); }catch(e){ setLabel(t.slice(0,22)); setTimeout(()=>setLabel("Sprechen"),2600); } }
   async function startScribe(){
+    if(!elKey){ if(SR){ startSR(); return; } sysMsg("Für die Spracherkennung fehlt der ElevenLabs-Schlüssel (⚙︎)."); return; }
     try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(e){ if(SR){ startSR(); return; } setLabel("Mikro nicht erlaubt"); setTimeout(()=>setLabel("Sprechen"),2500); return; }
-    chunks=[]; mime="";
+    catch(e){ if(SR){ startSR(); return; } sysMsg("Mikrofon-Zugriff wurde nicht erlaubt."); setLabel("Sprechen"); return; }
+    chunks=[]; mime=""; finalizing=false;
     try{ if(window.MediaRecorder.isTypeSupported("audio/webm")) mime="audio/webm"; else if(window.MediaRecorder.isTypeSupported("audio/mp4")) mime="audio/mp4"; }catch(e){}
     try{ mediaRec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream); }
-    catch(e){ try{ mediaRec=new MediaRecorder(stream); }catch(e2){ if(SR){ startSR(); return; } return; } }
+    catch(e){ try{ mediaRec=new MediaRecorder(stream); }catch(e2){ if(SR){ startSR(); return; } sysMsg("Aufnahme wird auf diesem Gerät nicht unterstützt."); return; } }
     mediaRec.ondataavailable=(ev)=>{ if(ev.data&&ev.data.size) chunks.push(ev.data); };
-    mediaRec.onstop=finishScribe;
-    try{ mediaRec.start(400); }catch(e){ try{ mediaRec.start(); }catch(e2){ if(SR){ startSR(); return; } return; } } // Zeitintervall → iOS liefert Daten
+    mediaRec.onstop=()=>finalize();
+    try{ mediaRec.start(400); }catch(e){ try{ mediaRec.start(); }catch(e2){ if(SR){ startSR(); return; } sysMsg("Aufnahme konnte nicht gestartet werden."); return; } } // Zeitintervall → iOS liefert Daten
     recording=true; recbtn.classList.add("rec"); setLabel("Stopp");
   }
   function stopScribe(){
     recording=false; recbtn.classList.remove("rec");
+    busy=true; recbtn.classList.add("busy"); setLabel("… wird erkannt");
     try{ if(mediaRec && mediaRec.state!=="inactive"){ try{ mediaRec.requestData(); }catch(e){} mediaRec.stop(); } }catch(e){}
+    setTimeout(()=>finalize(), 1300); // Sicherheitsnetz, falls onstop nicht feuert
   }
-  async function finishScribe(){
+  async function finalize(){
+    if(finalizing) return; finalizing=true;
     try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
     const type=(mediaRec&&mediaRec.mimeType)||mime||"audio/webm";
     const blob=new Blob(chunks,{type});
-    if(!blob.size){ setLabel("Nichts aufgenommen"); setTimeout(()=>setLabel("Sprechen"),2200); return; }
-    busy=true; recbtn.classList.add("busy"); setLabel("… wird erkannt");
+    if(!blob.size){ busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen"); sysMsg("Mikrofon hat nichts aufgenommen — Zugriff erlaubt und laut genug gesprochen?"); return; }
     try{
       const fd=new FormData();
       fd.append("file", blob, type.indexOf("mp4")>=0?"audio.mp4":"audio.webm");
@@ -1753,13 +1757,13 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
       const d=await r.json(); const text=((d&&d.text)||"").trim();
       busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen");
       if(text){ chatinput.value=text; sendChat(); }
-      else { setLabel("Nichts verstanden"); setTimeout(()=>setLabel("Sprechen"),2200); }
+      else sysMsg("Nichts verstanden — bitte nochmal.");
     }catch(e){
-      busy=false; recbtn.classList.remove("busy");
+      busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen");
       try{ console.error("Scribe-Fehler:", e); }catch(_){}
       const msg=String(e&&e.message||e);
-      if(SR && /^(401|403|404|422|429)/.test(msg)){ scribeBroken=true; setLabel("Studio-STT n/v — Browser"); setTimeout(()=>setLabel("Sprechen"),2600); }
-      else { setLabel("Fehler "+msg.slice(0,24)); setTimeout(()=>setLabel("Sprechen"),3200); }
+      if(SR && /^(401|403|404|422|429)/.test(msg)){ scribeBroken=true; sysMsg("Studio-Spracherkennung nicht verfügbar ("+msg.slice(0,16)+"). Ich nutze ab jetzt die Browser-Erkennung."); }
+      else sysMsg("Spracherkennung-Fehler: "+msg.slice(0,70));
     }
   }
 

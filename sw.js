@@ -1,4 +1,4 @@
-const CACHE = "coach-hub-v54";
+const CACHE = "coach-hub-v55";
 const ASSETS = ["./", "index.html", "app.js", "manifest.webmanifest"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
