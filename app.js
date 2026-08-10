@@ -11,7 +11,7 @@ const COACHES = {
 };
 const ORDER = Object.keys(COACHES);
 const SPECIALISTS = ORDER.filter(id=>id!=="viktor"); // v43: Viktor ist der Kern, diese 5 umkreisen ihn
-const AVV="?v=53"; // Avatar-Cache-Bust (früh definiert, da loadAvatars zeitig läuft)
+const AVV="?v=61"; // Avatar-Cache-Bust (früh definiert, da loadAvatars zeitig läuft)
 
 const DEMO = {
   recovery: 64, sleep:"5 h 40 min", hrv:"38 ms",
@@ -808,16 +808,22 @@ function flyOpen(id, srcEl){
   if(!srcEl || !srcEl.getBoundingClientRect){ openCall(id); return; }
   const r=srcEl.getBoundingClientRect();
   if(!r.width){ openCall(id); return; }
-  const cl=el('<div class="orb'+(AVOK[id]?' hasimg':'')+'" style="position:fixed;z-index:75;margin:0;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;font-size:18px;'+orbStyle(id)+';transition:all .5s cubic-bezier(.3,1,.3,1)">'+avatarInner(id)+'</div>');
+  const cl=el('<div class="orb'+(AVOK[id]?' hasimg':'')+'" style="position:fixed;z-index:75;margin:0;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;font-size:18px;'+orbStyle(id)+';transition:all .46s cubic-bezier(.3,1,.3,1)">'+avatarInner(id)+'</div>');
   orbBg(cl,id);
   document.body.appendChild(cl);
-  requestAnimationFrame(()=>{ requestAnimationFrame(()=>{
-    cl.style.left=(window.innerWidth/2-78)+"px";
-    cl.style.top=(84+window.innerHeight*0.025)+"px";
-    cl.style.width="156px"; cl.style.height="156px"; cl.style.fontSize="54px";  // exakt Größe von #bigorb → nahtlose Übergabe
-  }); });
-  setTimeout(()=>openCall(id), 330);
-  setTimeout(()=>{ try{cl.remove();}catch(e){} }, 680);
+  const call=document.getElementById("call");
+  call.classList.add("noslide");        // Container nicht einfliegen lassen → bigorb sofort an Endposition
+  openCall(id);
+  // echte Endposition des großen Orbs messen und den Klon exakt dorthin fliegen (kein Nachjustieren mehr)
+  requestAnimationFrame(()=>{
+    const bo=document.getElementById("bigorb"); const b=bo?bo.getBoundingClientRect():null;
+    if(!b||!b.width){ try{cl.remove();}catch(e){} call.classList.remove("noslide"); return; }
+    requestAnimationFrame(()=>{
+      cl.style.left=b.left+"px"; cl.style.top=b.top+"px";
+      cl.style.width=b.width+"px"; cl.style.height=b.height+"px"; cl.style.fontSize="54px";
+    });
+  });
+  setTimeout(()=>{ try{cl.remove();}catch(e){} call.classList.remove("noslide"); }, 560);
 }
 function orbitSay(coachId,title,html,target){
   const m=document.getElementById("orbitmsg"); if(!m) return;
@@ -1552,6 +1558,14 @@ function memoryFor(coachId){
   const all = !coachId || coachId==="viktor" || coachId==="all";
   return memItems.filter(it=> all ? true : (it.coach==="core" || it.coach==="all" || it.coach===coachId));
 }
+function dateContext(){
+  const now=new Date();
+  const days=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
+  const months=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+  const iso=now.toISOString().slice(0,10);
+  return "Heute ist "+days[now.getDay()]+", der "+now.getDate()+". "+months[now.getMonth()]+" "+now.getFullYear()+" ("+iso+"). "+
+    "Rechne alle Zeitangaben immer gegen dieses heutige Datum. Ein früher notierter Plan („heute/morgen“ aus einer alten Notiz) kann längst in der Vergangenheit liegen — nimm nicht an, dass er noch bevorsteht. Im Zweifel über das Timing: frag kurz nach, statt es zu erfinden. ";
+}
 function memoryBlock(coachId){
   const items=memoryFor(coachId);
   if(!items.length) return "Du kennst Marco noch gar nicht — dies ist einer eurer allerersten Momente. Sei aufrichtig neugierig: stelle ihm warme, offene Fragen über sein Leben, seine Ziele und was ihn bewegt — immer eine nach der anderen, nie wie ein Fragebogen. Erfinde nichts über ihn. ";
@@ -1569,7 +1583,8 @@ function rememberInstructions(id){
     "Format: <remember coach=\"BEREICH\" kind=\"TYP\">kurzer Text in dritter Person</remember>. "+
     "BEREICH: 'core' für Persönliches/Werte (gilt für alle Coaches) oder eine Coach-ID ("+ORDER.join(", ")+") — meist dein eigener Bereich ("+id+"). "+
     "TYP: 'fact' für Dauerhaftes (wer er ist, Werte, Vorlieben); 'state' für Aktuelles, das sich ändert — dann zusätzlich key=\"kurzerSchlüssel\" (z. B. kind=\"state\" key=\"trainingsfrequenz\"); 'milestone' für Fortschritt/Ereignisse — dann zusätzlich date=\"JJJJ-MM-TT\" (heute ist "+today+"). "+
-    "Aktualisierst du einen Zustand, verwende exakt denselben key wie zuvor. Höchstens ein bis zwei pro Antwort, nur wirklich Wichtiges. ";
+    "Aktualisierst du einen Zustand, verwende exakt denselben key wie zuvor. Höchstens ein bis zwei pro Antwort, nur wirklich Wichtiges. "+
+    "WICHTIG zu Zeit: Schreibe niemals „heute“, „gestern“, „morgen“ o. ä. in den gemerkten Text — die Notiz wird später gelesen und die Wörter wären dann falsch. Nutze stattdessen das absolute Datum (z. B. „am "+today+"“) bzw. bei Ereignissen das date-Attribut. ";
 }
 function systemPrompt(id){
   const c=COACHES[id];
@@ -1580,6 +1595,7 @@ function systemPrompt(id){
     "Beziehe dich natürlich und sparsam auf deinen eigenen Weg, wenn es hilft — nie aufgesetzt, kein Lebenslauf-Aufsagen. Du gehörst zu den Besten deines Fachs und trittst mit dieser ruhigen Souveränität auf. "; }
   p+="Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
+    dateContext()+
     memoryBlock(id)+
     rememberInstructions(id);
   p+="Wenn Marco einen anderen Coach dazuholen möchte (z. B. „hol Deniz dazu“, „was sagt Lena dazu?“, „frag mal Elias“), kündige es in einem kurzen Satz an und hänge GANZ am Ende <invite>coachid</invite> an — nur die id. Erlaubte ids: "+ORDER.filter(x=>x!==id).join(", ")+". Tu das nur, wenn Marco es wünscht oder es klar sinnvoll ist. ";
@@ -1634,7 +1650,7 @@ function teamRespond(extraNote){
   const wantsWhoop=parts.some(x=>["deniz","elias","mara","viktor"].includes(x));
   const sys="Du inszenierst eine laufende, lockere Teambesprechung von Marcos Coaching-Team. Teilnehmer: "+roster+". "+
     "Reagiere auf Marcos letzte Nachricht: es antworten so viele Coaches, wie sinnvoll ist — bei allgemeinen Fragen (z. B. „wie geht es euch?“) gerne alle Teilnehmer kurz, sonst die ein bis drei wirklich Relevanten. Jeder Beitrag 1 bis 3 Sätze, in seinem Charakter. Sie hören einander zu, geben sich auch recht, bauen aufeinander auf — kein Streit. Deutsch, per Du, gesprochen. "+
-    memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
+    dateContext()+memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
     "Erfinde keine Daten über Marco. Antworte AUSSCHLIESSLICH als reines JSON-Array, Format [{\"coach\":\"<id>\",\"text\":\"...\"}], erlaubte ids: "+parts.join(", ")+".";
   const user="Bisheriger Gesprächsverlauf:\n"+transcriptText()+(extraNote?("\n\n"+extraNote):"");
   const tk=++seqToken;
