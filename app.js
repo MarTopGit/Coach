@@ -240,6 +240,7 @@ const player=new Audio();
 let audioUnlocked=false;
 function unlockAudio(){
   if(audioUnlocked) return; audioUnlocked=true;
+  try{ const c=actx(); if(c && c.state==="suspended") c.resume(); }catch(e){}
   try{ player.src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
     player.play().catch(()=>{}); }catch(e){}
   try{ if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission==="function"){
@@ -248,25 +249,88 @@ function unlockAudio(){
 }
 document.addEventListener("pointerdown", unlockAudio, { once:true, capture:true });
 
-/* ---- Sprech-reaktive Aura (synthetisch, KEIN Web-Audio-Routing → iOS-Lautstärke/Stumm bleibt aktiv) ---- */
-let speakingNow=false, auraRaf=null;
+/* ---- Audio-Kontext (nur für Analyse + kurze UI-Sounds; die Coach-Stimme bleibt am <audio>, iOS-Lautstärke bleibt aktiv) ---- */
+let _actx=null;
+function actx(){ try{ if(!_actx) _actx=new (window.AudioContext||window.webkitAudioContext)(); return _actx; }catch(e){ return null; } }
+/* Hüllkurve aus echten Audio-Samples berechnen → Aura pulsiert mit der wirklichen Stimme */
+function buildEnv(ab){
+  return new Promise((res)=>{
+    const ctx=actx(); if(!ctx||!ab){ res(null); return; }
+    try{
+      ctx.decodeAudioData(ab.slice(0), (buf)=>{
+        try{
+          const ch=buf.getChannelData(0), sr=buf.sampleRate, fd=0.035, per=Math.max(1,Math.floor(sr*fd));
+          const n=Math.ceil(ch.length/per), b=new Float32Array(n); let mx=1e-6;
+          for(let i=0;i<n;i++){ let s=0,c=0; const st=i*per, en=Math.min(ch.length,st+per);
+            for(let j=st;j<en;j++){ s+=ch[j]*ch[j]; c++; } const rms=Math.sqrt(s/(c||1)); b[i]=rms; if(rms>mx)mx=rms; }
+          for(let i=0;i<n;i++){ b[i]=Math.min(1,b[i]/mx); }
+          res({b:b, fd:fd, dur:buf.duration});
+        }catch(e){ res(null); }
+      }, ()=>res(null));
+    }catch(e){ res(null); }
+  });
+}
+/* ---- Dezentes Sound-Design (kurze synthetische UI-Klänge) ---- */
+function sfx(type){
+  if(!voiceOn) return;
+  const ctx=actx(); if(!ctx) return;
+  try{ if(ctx.state==="suspended") ctx.resume(); }catch(e){}
+  const now=ctx.currentTime;
+  try{
+    if(type==="whoosh"||type==="whoosh2"){
+      const up=(type==="whoosh"), dur=0.5;
+      const buf=ctx.createBuffer(1, Math.floor(ctx.sampleRate*dur), ctx.sampleRate), d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src=ctx.createBufferSource(); src.buffer=buf;
+      const bp=ctx.createBiquadFilter(); bp.type="bandpass"; bp.Q.value=0.7;
+      bp.frequency.setValueAtTime(up?300:1100, now);
+      bp.frequency.exponentialRampToValueAtTime(up?1500:260, now+dur);
+      const g=ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.10, now+0.08);
+      g.gain.exponentialRampToValueAtTime(0.0001, now+dur);
+      src.connect(bp); bp.connect(g); g.connect(ctx.destination); src.start(now); src.stop(now+dur);
+    } else if(type==="chime"){
+      [523.25,659.25,783.99].forEach((f,i)=>{
+        const o=ctx.createOscillator(); o.type="sine"; o.frequency.value=f;
+        const g=ctx.createGain(), st=now+i*0.07;
+        g.gain.setValueAtTime(0.0001, st);
+        g.gain.exponentialRampToValueAtTime(0.09, st+0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, st+0.95);
+        o.connect(g); g.connect(ctx.destination); o.start(st); o.stop(st+1);
+      });
+    }
+  }catch(e){}
+}
+/* ---- Sprech-reaktive Aura (echte Hüllkurve, sonst synthetisch) ---- */
+let speakingNow=false, auraRaf=null, curEnv=null, auraAmp=0;
 function startAura(){
   stopAura();
   const t0=performance.now();
   const loop=(now)=>{
     if(!callOpen || !speakingNow){ stopAura(); return; }
     const t=(now-t0)/1000;
-    const env=Math.abs(0.55*Math.sin(t*7.3)+0.45*Math.sin(t*12.9+1.1));
-    const amp=Math.min(1,Math.max(.12,.3+.7*env));
+    let target;
+    if(curEnv && curEnv.b && curEnv.b.length){
+      let idx=Math.floor((player.currentTime||0)/curEnv.fd);
+      if(idx<0) idx=0; if(idx>=curEnv.b.length) idx=curEnv.b.length-1;
+      target=curEnv.b[idx]||0;                       // echte Lautstärke der Stimme
+    } else {
+      const env=Math.abs(0.55*Math.sin(t*7.3)+0.45*Math.sin(t*12.9+1.1));
+      target=0.3+0.7*env;                            // Fallback (System-Stimme ohne Samples)
+    }
+    auraAmp += (target-auraAmp)*0.3;                 // sanfte Glättung
+    const amp=Math.min(1,Math.max(.08,auraAmp));
     const vr=document.getElementById("voicering"), orb=document.getElementById("bigorb");
-    if(vr){ vr.style.opacity=(amp*.85).toFixed(2); vr.style.transform="scale("+(1+amp*.4).toFixed(3)+")"; vr.style.borderColor=curHex; }
-    if(orb) orb.style.boxShadow="0 6px "+(22+amp*55).toFixed(0)+"px "+curHex+"55, 0 3px 12px rgba(0,0,0,.12)";
+    if(vr){ vr.style.opacity=(amp*.9).toFixed(2); vr.style.transform="scale("+(1+amp*.5).toFixed(3)+")"; vr.style.borderColor=curHex; }
+    if(orb) orb.style.boxShadow="0 6px "+(20+amp*70).toFixed(0)+"px "+curHex+(amp>.5?"66":"44")+", 0 3px 12px rgba(0,0,0,.12)";
     auraRaf=requestAnimationFrame(loop);
   };
   auraRaf=requestAnimationFrame(loop);
 }
 function stopAura(){
   if(auraRaf){ cancelAnimationFrame(auraRaf); auraRaf=null; }
+  auraAmp=0;
   const vr=document.getElementById("voicering"); if(vr) vr.style.opacity="0";
   const orb=document.getElementById("bigorb"); if(orb) orb.style.boxShadow="";
 }
@@ -406,15 +470,21 @@ function speakStudio(coachId, clean, onDur){
       document.getElementById("call").classList.add("live");
       player.play().then(()=>{}).catch(rej);
     };
+    curEnv=null;  // Hüllkurve pro Beitrag frisch; bis sie da ist, greift die synthetische Aura
     getCachedAudio(coachId,clean).then(cached=>{
-      if(cached){ start(cached); return; }
+      if(cached){
+        try{ fetch(cached).then(r=>r.arrayBuffer()).then(ab=>buildEnv(ab)).then(e=>{ curEnv=e; }).catch(()=>{}); }catch(e){}
+        start(cached); return;
+      }
       fetch("https://api.elevenlabs.io/v1/text-to-speech/"+EL_VOICES[coachId]+"?output_format=mp3_44100_64",{
         method:"POST",
         headers:{ "xi-api-key":elKey, "Content-Type":"application/json" },
         body:JSON.stringify({ text:clean, model_id:EL_MODEL, voice_settings:EL_SETTINGS })
-      }).then(r=>{ if(!r.ok) throw new Error("http "+r.status); return r.blob(); })
-        .then(b=>{ putCachedAudio(coachId,clean,b);
-          const url=URL.createObjectURL(b); audioCache.set(coachId+"|"+clean,url); start(url); })
+      }).then(r=>{ if(!r.ok) throw new Error("http "+r.status); return r.arrayBuffer(); })
+        .then(ab=>{ const b=new Blob([ab],{type:"audio/mpeg"}); putCachedAudio(coachId,clean,b);
+          const url=URL.createObjectURL(b); audioCache.set(coachId+"|"+clean,url);
+          buildEnv(ab).then(e=>{ curEnv=e; }).catch(()=>{});
+          start(url); })
         .catch(rej);
     });
   });
@@ -486,6 +556,9 @@ function openCall(id){
   setSpeaker(isTeam?"viktor":id, true);
   call.classList.toggle("teammode", isTeam);
   call.classList.add("open");
+  call.classList.add("igniting");                         // Eintritt: Orb entzündet sich, Center schiebt sich heran
+  setTimeout(()=>call.classList.remove("igniting"), 780);
+  sfx("whoosh");
   if(isTeam){ const t=++seqToken; runSequence(currentScript.intro, ()=>showChips(currentScript.chips), t); }
   else if(liveMode){ enterLive(id); }
   else { showNoKey(id); }
@@ -518,6 +591,7 @@ function closeCall(){
   else if(_sumId && _realTurns>=1){ try{ summarizeConversation(_sumId, _sumHist); }catch(e){} }
   liveTeam=false; liveParticipants=[];
   callOpen=false; seqToken++; paused=false; resumeFn=null;
+  sfx("whoosh2");
   const b=document.getElementById("pausebtn"); if(b) b.textContent="❚❚";
   document.getElementById("call").classList.remove("open");
   document.getElementById("call").classList.remove("speaking");
@@ -525,6 +599,7 @@ function closeCall(){
   try{ player.pause(); player.currentTime=0; }catch(e){}
   speakingNow=false; stopAura(); document.getElementById("call").classList.remove("live");
   liveMode=false; const _cb2=document.getElementById("chatbar"); if(_cb2) _cb2.style.display="none";
+  try{ if(window.__releaseMic) window.__releaseMic(); }catch(e){}
 }
 function setSpeaker(id, instant){
   const c=COACHES[id];
@@ -1390,10 +1465,11 @@ function switchToTeam(newIds){
 function teamTransition(parts, added, done){
   const call=document.getElementById("call"); if(!call){ if(done) done(); return; }
   const names = added && added.length ? " mit "+added.map(id=>COACHES[id].name).join(" & ") : "";
-  const ov=el('<div class="teamswitch"><div class="tsrow">'+
+  const ov=el('<div class="teamswitch"><div class="tshalo"></div><div class="tsrow">'+
     parts.map(id=>'<div class="orb'+(AVOK[id]?' hasimg':'')+'" style="'+orbStyle(id)+'">'+avatarInner(id)+'</div>').join("")+
     '</div><div class="tstext">Teambesprechung'+esc(names)+'</div></div>');
   call.appendChild(ov);
+  sfx("chime");                                           // warmer Ton beim Zusammenkommen
   setTimeout(()=>{ ov.classList.add("out"); }, 1150);
   setTimeout(()=>{ try{ ov.remove(); }catch(e){} if(done) done(); }, 1600);
 }
@@ -1723,10 +1799,13 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   /* Scribe (Aufnahme → ElevenLabs) */
   let mediaRec=null, chunks=[], stream=null, recording=false, busy=false, mime="", finalizing=false;
   function sysMsg(t){ try{ addMsg("sys", t); }catch(e){ setLabel(t.slice(0,22)); setTimeout(()=>setLabel("Sprechen"),2600); } }
+  function micLive(){ try{ return stream && stream.getAudioTracks().some(t=>t.readyState==="live"); }catch(e){ return false; } }
   async function startScribe(){
     if(!elKey){ if(SR){ startSR(); return; } sysMsg("Für die Spracherkennung fehlt der ElevenLabs-Schlüssel (⚙︎)."); return; }
-    try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
-    catch(e){ if(SR){ startSR(); return; } sysMsg("Mikrofon-Zugriff wurde nicht erlaubt."); setLabel("Sprechen"); return; }
+    if(!micLive()){ // Zugriff nur einmal pro Gespräch anfordern, danach Stream offen halten
+      try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+      catch(e){ if(SR){ startSR(); return; } sysMsg("Mikrofon-Zugriff wurde nicht erlaubt."); setLabel("Sprechen"); return; }
+    }
     chunks=[]; mime=""; finalizing=false;
     try{ if(window.MediaRecorder.isTypeSupported("audio/webm")) mime="audio/webm"; else if(window.MediaRecorder.isTypeSupported("audio/mp4")) mime="audio/mp4"; }catch(e){}
     try{ mediaRec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream); }
@@ -1742,9 +1821,10 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
     try{ if(mediaRec && mediaRec.state!=="inactive"){ try{ mediaRec.requestData(); }catch(e){} mediaRec.stop(); } }catch(e){}
     setTimeout(()=>finalize(), 1300); // Sicherheitsnetz, falls onstop nicht feuert
   }
+  window.__releaseMic=function(){ try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){} stream=null; };
   async function finalize(){
     if(finalizing) return; finalizing=true;
-    try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    // Stream NICHT stoppen -> Mikro bleibt fürs Gespräch offen, iOS fragt nicht bei jedem Klick neu
     const type=(mediaRec&&mediaRec.mimeType)||mime||"audio/webm";
     const blob=new Blob(chunks,{type});
     if(!blob.size){ busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen"); sysMsg("Mikrofon hat nichts aufgenommen — Zugriff erlaubt und laut genug gesprochen?"); return; }

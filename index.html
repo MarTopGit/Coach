@@ -315,6 +315,22 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 @keyframes tspop{to{transform:scale(1);opacity:1}}
 .teamswitch .tstext{font-family:var(--serif);font-weight:600;font-size:18px;color:var(--text);letter-spacing:-.01em;
   opacity:0;animation:fade .5s ease .35s forwards}
+/* v57: Team-Versammlung — Licht-Halo pulsiert beim Zusammenkommen */
+.teamswitch .tshalo{position:absolute;top:42%;left:50%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;
+  pointer-events:none;background:radial-gradient(circle, rgba(139,127,240,.32), transparent 70%);animation:tshalo 1.15s ease forwards}
+@keyframes tshalo{0%{transform:scale(.3);opacity:0}35%{opacity:1}100%{transform:scale(2.3);opacity:0}}
+/* v57: Call-Eintritt — „der Coach dreht sich zu dir" */
+#call.igniting #callcenter{animation:centerin .64s cubic-bezier(.2,1,.36,1)}
+@keyframes centerin{from{opacity:0;transform:scale(.72);filter:blur(7px)}to{opacity:1;transform:none;filter:none}}
+#call.igniting #call-aura{animation:auraflash .82s ease}
+@keyframes auraflash{0%{opacity:0;transform:scale(1.35)}28%{opacity:1}100%{opacity:.95;transform:none}}
+#call.igniting #bigorb{animation:orbignite .72s cubic-bezier(.2,1,.36,1)}
+@keyframes orbignite{0%{transform:scale(.55);box-shadow:0 0 0 rgba(0,0,0,0)}
+  45%{box-shadow:0 6px 70px var(--coach)}100%{transform:scale(1)}}
+#call.igniting #transcript,#call.igniting #chips{animation:fade .7s ease .18s both}
+/* v57: Ruhe-Präsenz — Coach atmet leise, wenn er zuhört */
+#call.open:not(.speaking):not(.teammode) #bigorb{animation:idlebreath 5.2s ease-in-out infinite}
+@keyframes idlebreath{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
 </style>
 </head>
 <body>
@@ -414,7 +430,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 55</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 57</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -535,6 +551,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=55"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>
