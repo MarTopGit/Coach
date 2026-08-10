@@ -632,7 +632,8 @@ const OCX=160, OCY=88, ORX=126, ORY=44, OW=(2*Math.PI)/140000;
 let dragSpin=0, mouseSpin=0, mouseSpinT=0, _dragLast=null, _dragMoved=0;
 let orbEls=[], orbitT0=0, frontId="";
 const AVOK={};
-function avatarInner(id){ return AVOK[id] ? '<img src="avatars/'+id+'.png" alt="">' : COACHES[id].ini; }
+const AVV="?v=51";
+function avatarInner(id){ return AVOK[id] ? '<img src="avatars/'+id+'.png'+AVV+'" alt="">' : COACHES[id].ini; }
 function refreshOrbFaces(){
   orbEls.forEach(o=>{ const id=o.dataset.c;
     o.classList.toggle("hasimg",!!AVOK[id]);
@@ -647,7 +648,7 @@ function loadAvatars(){
   ORDER.forEach(id=>{ try{
     const im=new Image();
     im.onload=()=>{ AVOK[id]=true; refreshOrbFaces(); };
-    im.src="avatars/"+id+".png";
+    im.src="avatars/"+id+".png"+AVV;
   }catch(e){} });
 }
 function easeOutBack(x){ const c=1.70158; return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2); }
@@ -1024,7 +1025,7 @@ function renderCoachCards(){
   car.innerHTML=ORDER.map(id=>{
     const c=COACHES[id];
     const photo=AVOK[id]
-      ? '<img src="avatars/'+id+'.png" alt="'+c.name+'">'
+      ? '<img src="avatars/'+id+'.png'+AVV+'" alt="'+c.name+'">'
       : '<span class="bigini">'+c.ini+'</span>';
     return '<div class="ccard" data-c="'+id+'">'+
       '<div class="photo" style="background:radial-gradient(circle at 35% 25%,'+c.hex+','+shade(c.hex,-40)+')">'+photo+
@@ -1145,42 +1146,22 @@ function claudeRaw(system, messages, maxTokens){
 function openLiveRound(topic){
   topic=(topic||"").trim(); if(!topic) return;
   const parts=(selectedParts&&selectedParts.length)?selectedParts.slice():ORDER.slice();
-  paused=false; resumeFn=null; liveMode=false; liveCoachId=null;
-  liveTeam=true; liveParticipants=parts.slice(); sharedLog=[{ who:"marco", text:"Thema: "+topic }];
+  paused=false; resumeFn=null; liveMode=true; liveCoachId=null;
+  liveTeam=true; liveParticipants=parts.slice(); sharedLog=[{ who:"marco", text:topic }];
   currentScript={ isTeam:true, parts:parts }; isTeam=true; callOpen=true;
   const call=document.getElementById("call");
   document.getElementById("transcript").innerHTML="";
   document.getElementById("chips").innerHTML="";
-  const _cb=document.getElementById("chatbar"); if(_cb) _cb.style.display="none";
   const tr=document.getElementById("teamrow"); tr.style.display="flex";
   tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join("");
   setSpeaker(parts[0], true);
   call.classList.toggle("teammode", true); call.classList.add("open");
+  showChatbar();
   const log=document.getElementById("transcript");
-  log.appendChild(el('<div class="tsys">Team-Runde · '+esc(topic)+'</div>'));
-  const typ=el('<div class="tsys">Das Team überlegt …</div>'); log.appendChild(typ);
-  const roster=parts.map(id=>COACHES[id].name+" ("+COACHES[id].role+", "+COACHES[id].vibe+", id: "+id+")").join("; ");
-  const sys="Du inszenierst eine kurze, faire Besprechung von Marcos persönlichem Coaching-Team zu einem Thema. "+
-    "Teilnehmer: "+roster+". Jeder spricht aus seinem Charakter und seiner Rolle, hört den anderen zu, gibt ihnen auch recht, baut auf ihren Punkten auf. "+
-    "Es wird NICHT gestritten — die Runde läuft auf einen gemeinsamen Konsens hinaus, es geht um das beste Ergebnis für Marco, nicht ums Rechthaben. Deutsch, per Du, gesprochen, jeder Beitrag 1 bis 3 Sätze. "+
-    memoryBlock()+
-    ((parts.indexOf("deniz")>=0||parts.indexOf("viktor")>=0)?trainingSummary():"")+
-    ((parts.indexOf("deniz")>=0||parts.indexOf("elias")>=0||parts.indexOf("mara")>=0||parts.indexOf("viktor")>=0)?whoopSummary():"")+
-    "Erfinde KEINE Daten über Marco (keine Werte außer den oben genannten echten Whoop-/Trainingszahlen), wenn sie nicht oben stehen. "+
-    "Antworte AUSSCHLIESSLICH als reines JSON-Array, ohne Text drumherum, Format: [{\"coach\":\"<id>\",\"text\":\"...\"}]. "+
-    "Erlaubte coach-ids: "+parts.join(", ")+". 6 bis 9 Beiträge, der letzte fasst den gemeinsamen Konsens zusammen.";
-  const tk=++seqToken;
-  claudeRaw(sys, [{ role:"user", content:"Thema: "+topic }], 1100).then(txt=>{
-    if(tk!==seqToken) return;
-    try{ typ.remove(); }catch(e){}
-    let turns=[];
-    try{ const m=txt.match(/\[[\s\S]*\]/); turns=JSON.parse(m?m[0]:txt); }catch(e){ turns=[]; }
-    turns=(turns||[]).filter(t=>t&&COACHES[t.coach]&&parts.indexOf(t.coach)>=0&&t.text);
-    if(!turns.length){ addMsg("sys","Konnte die Runde nicht erzeugen — bitte nochmal versuchen."); return; }
-    turns.forEach(t=>sharedLog.push({ who:t.coach, text:String(t.text) }));
-    const msgs=turns.map(t=>[t.coach, String(t.text)]);
-    runSequence(msgs, ()=>showChips([{ t:"Runde beenden", end:true }]), tk);
-  }).catch(e=>{ try{ typ.remove(); }catch(_){} addMsg("sys","⚠︎ "+anthErr(e)); });
+  log.appendChild(el('<div class="tsys">Team-Runde</div>'));
+  log.appendChild(el('<div class="tme">'+esc(topic)+'</div>'));
+  log.scrollTop=log.scrollHeight;
+  teamRespond("(Auftakt der Runde zu diesem Thema. Jeder Teilnehmer, der etwas beizutragen hat, meldet sich einmal kurz zu Wort — nicht nur einer. Danach läuft es als lockeres Gespräch weiter.)");
 }
 function startRound(topic){
   if(!anthKey){ const th=document.getElementById("topichint"); if(th){ th.style.display="block"; th.textContent="Dafür braucht dein Team den Coach-Intelligenz-Key (⚙︎)."; } return; }
@@ -1424,12 +1405,12 @@ function teamRespond(extraNote){
   const wantsTrain=parts.some(x=>x==="deniz"||x==="viktor");
   const wantsWhoop=parts.some(x=>["deniz","elias","mara","viktor"].includes(x));
   const sys="Du inszenierst eine laufende, lockere Teambesprechung von Marcos Coaching-Team. Teilnehmer: "+roster+". "+
-    "Reagiere auf Marcos letzte Nachricht: es antworten NUR die Coaches, die wirklich etwas beizutragen haben (einer bis drei pro Runde), jeweils 1 bis 3 Sätze, in ihrem Charakter. Sie hören einander zu, geben sich auch recht, bauen aufeinander auf — kein Streit. Deutsch, per Du, gesprochen. "+
+    "Reagiere auf Marcos letzte Nachricht: es antworten so viele Coaches, wie sinnvoll ist — bei allgemeinen Fragen (z. B. „wie geht es euch?“) gerne alle Teilnehmer kurz, sonst die ein bis drei wirklich Relevanten. Jeder Beitrag 1 bis 3 Sätze, in seinem Charakter. Sie hören einander zu, geben sich auch recht, bauen aufeinander auf — kein Streit. Deutsch, per Du, gesprochen. "+
     memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
     "Erfinde keine Daten über Marco. Antworte AUSSCHLIESSLICH als reines JSON-Array, Format [{\"coach\":\"<id>\",\"text\":\"...\"}], erlaubte ids: "+parts.join(", ")+".";
   const user="Bisheriger Gesprächsverlauf:\n"+transcriptText()+(extraNote?("\n\n"+extraNote):"");
   const tk=++seqToken;
-  claudeRaw(sys, [{ role:"user", content:user }], 900).then(txt=>{
+  claudeRaw(sys, [{ role:"user", content:user }], 1200).then(txt=>{
     if(tk!==seqToken) return; try{ typ.remove(); }catch(e){}
     let turns=[]; try{ const m=txt.match(/\[[\s\S]*\]/); turns=JSON.parse(m?m[0]:txt); }catch(e){ turns=[]; }
     turns=(turns||[]).filter(t=>t&&COACHES[t.coach]&&parts.indexOf(t.coach)>=0&&t.text);
@@ -1506,30 +1487,32 @@ function revealSynced(id, clean, token, typ){
   const words=clean.split(" ");
   let line=null, spans=null, wi=0, rev=null, started=false;
   const stop=()=>{ if(rev){ clearInterval(rev); rev=null; } };
-  const finishAll=()=>{ stop(); if(spans) spans.forEach(s=>s.classList.add("on")); };
+  // beim Enthüllen dem aktuellen Wort nach unten folgen, wenn es unter den sichtbaren Rand läuft
+  const follow=(sp)=>{ try{ const cr=log.getBoundingClientRect(), er=sp.getBoundingClientRect();
+    if(er.bottom > cr.bottom-10){ log.scrollTop += (er.bottom-(cr.bottom-10)); } }catch(e){} };
+  const finishAll=()=>{ stop(); if(spans){ spans.forEach(s=>s.classList.add("on")); if(spans.length) follow(spans[spans.length-1]); } };
   const beginReveal=(ms)=>{
     if(token!==seqToken || started) return; started=true;
     try{ if(typ) typ.remove(); }catch(e){}
     setSpeakingUI(true, id);                    // Atmen/Aura/„spricht" genau ab Sprechbeginn
     line=el('<div class="tline">'+words.map(w=>'<span class="w">'+esc(w)+'</span>').join(" ")+'</div>');
     log.appendChild(line); spans=line.querySelectorAll(".w");
-    log.scrollTop=Math.max(0, line.offsetTop-14);   // Anfang der Antwort oben zeigen, nicht dem Ende folgen
+    log.scrollTop=Math.max(0, line.offsetTop-14);   // Anfang oben zeigen, dann mitlaufen
     const per=Math.max(45,(ms*0.94)/Math.max(1,words.length));
     rev=setInterval(()=>{
       if(token!==seqToken){ stop(); return; }
-      if(wi<spans.length){ spans[wi++].classList.add("on"); }
+      if(wi<spans.length){ const sp=spans[wi++]; sp.classList.add("on"); follow(sp); }
       else stop();
     }, per);
   };
-  const snapToStart=()=>{ try{ if(line) log.scrollTop=Math.max(0, line.offsetTop-14); }catch(e){} };
   return speak(id, clean, (ms)=>beginReveal(ms)).then(()=>{
     if(token!==seqToken) return;
     if(!started) beginReveal(estMs(clean,COACHES[id].rate));
-    finishAll(); setSpeakingUI(false); snapToStart();
+    finishAll(); setSpeakingUI(false);
   }).catch(()=>{
     if(token!==seqToken) return;
     if(!started) beginReveal(estMs(clean,COACHES[id].rate));
-    finishAll(); setSpeakingUI(false); snapToStart();
+    finishAll(); setSpeakingUI(false);
   });
 }
 /* v31: 1:1-Antwort holen, dann im Sprechtakt zeigen */
@@ -1713,38 +1696,85 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   };
 })();
 
-/* v42: Freihand-Voice — Antippen zum Sprechen (mit Pausen), Antippen zum Senden */
+/* v50: Freihand-Voice — bevorzugt ElevenLabs Scribe (genau), sonst Browser-Erkennung */
 (function(){
   const mic=document.getElementById("micbtn"); if(!mic) return;
+  const canRec=!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){ mic.style.display="none"; return; }
-  let rec=null, listening=false, finalText="";
-  function start(){
-    const inp=document.getElementById("chatinput"); if(!inp) return;
+  if(!canRec && !SR){ mic.style.display="none"; return; }
+  const inp=()=>document.getElementById("chatinput");
+  function ph(t){ const i=inp(); if(i) i.setAttribute("placeholder", t); }
+  const PH_DEFAULT="Schreib oder tippe aufs Mikro…";
+
+  /* ---- Scribe (Aufnahme → Transkription) ---- */
+  let mediaRec=null, chunks=[], stream=null, recording=false, busy=false, mime="";
+  async function startScribe(){
+    try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+    catch(e){ if(SR){ startSR(); return; } ph("Mikrofon nicht erlaubt"); setTimeout(()=>ph(PH_DEFAULT),2500); return; }
+    chunks=[]; mime="";
+    try{ if(window.MediaRecorder.isTypeSupported("audio/webm")) mime="audio/webm";
+      else if(window.MediaRecorder.isTypeSupported("audio/mp4")) mime="audio/mp4"; }catch(e){}
+    try{ mediaRec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream); }
+    catch(e){ try{ mediaRec=new MediaRecorder(stream); }catch(e2){ if(SR){ startSR(); return; } return; } }
+    mediaRec.ondataavailable=(ev)=>{ if(ev.data&&ev.data.size) chunks.push(ev.data); };
+    mediaRec.onstop=finishScribe;
+    try{ mediaRec.start(); }catch(e){ if(SR){ startSR(); return; } return; }
+    recording=true; mic.classList.add("listening");
+  }
+  function stopScribe(){
+    recording=false; mic.classList.remove("listening");
+    try{ if(mediaRec && mediaRec.state!=="inactive") mediaRec.stop(); }catch(e){}
+  }
+  async function finishScribe(){
+    try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+    const type=(mediaRec&&mediaRec.mimeType)||mime||"audio/webm";
+    const blob=new Blob(chunks,{type});
+    if(!blob.size){ return; }
+    busy=true; mic.classList.add("busy"); ph("… wird erkannt");
+    try{
+      const fd=new FormData();
+      fd.append("file", blob, type.indexOf("mp4")>=0?"audio.mp4":"audio.webm");
+      fd.append("model_id","scribe_v1");
+      fd.append("language_code","de");
+      const r=await fetch("https://api.elevenlabs.io/v1/speech-to-text",{ method:"POST", headers:{ "xi-api-key":elKey }, body:fd });
+      if(!r.ok){ const t=await r.text(); throw new Error("HTTP "+r.status+" "+t.slice(0,80)); }
+      const d=await r.json();
+      const text=((d&&d.text)||"").trim();
+      busy=false; mic.classList.remove("busy"); ph(PH_DEFAULT);
+      if(text){ const i=inp(); if(i) i.value=text; sendChat(); }
+      else { ph("Nichts verstanden — nochmal?"); setTimeout(()=>ph(PH_DEFAULT),2500); }
+    }catch(e){
+      busy=false; mic.classList.remove("busy"); ph("Erkennung fehlgeschlagen — nochmal?"); setTimeout(()=>ph(PH_DEFAULT),2800);
+    }
+  }
+
+  /* ---- Fallback: Browser-Spracherkennung ---- */
+  let rec=null, srListening=false, finalText="";
+  function startSR(){
+    if(!SR){ return; }
     finalText="";
     try{
       rec=new SR(); rec.lang="de-DE"; rec.interimResults=true; rec.continuous=true; rec.maxAlternatives=1;
-      rec.onstart=()=>{ listening=true; mic.classList.add("listening"); };
-      rec.onresult=(e)=>{
-        let interim="";
-        for(let i=e.resultIndex;i<e.results.length;i++){
-          const r=e.results[i];
-          if(r.isFinal) finalText+=r[0].transcript+" "; else interim+=r[0].transcript;
-        }
-        inp.value=(finalText+interim).replace(/\s{2,}/g," ").trim();
-      };
-      rec.onerror=(ev)=>{ if(ev&&(ev.error==="no-speech"||ev.error==="aborted")) return; stop(false); };
-      rec.onend=()=>{ if(listening){ try{ rec.start(); }catch(e){} } }; // Auto-Neustart bis der Nutzer stoppt
+      rec.onstart=()=>{ srListening=true; mic.classList.add("listening"); };
+      rec.onresult=(e)=>{ let interim=""; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) finalText+=r[0].transcript+" "; else interim+=r[0].transcript; } const el2=inp(); if(el2) el2.value=(finalText+interim).replace(/\s{2,}/g," ").trim(); };
+      rec.onerror=(ev)=>{ if(ev&&(ev.error==="no-speech"||ev.error==="aborted")) return; stopSR(false); };
+      rec.onend=()=>{ if(srListening){ try{ rec.start(); }catch(e){} } };
       try{ unlockAudio(); }catch(e){}
       rec.start();
-    }catch(e){ listening=false; mic.classList.remove("listening"); }
+    }catch(e){ srListening=false; mic.classList.remove("listening"); }
   }
-  function stop(send){
-    listening=false; mic.classList.remove("listening");
+  function stopSR(send){
+    srListening=false; mic.classList.remove("listening");
     if(rec){ try{ rec.onend=null; rec.stop(); }catch(e){} }
-    if(send){ const inp=document.getElementById("chatinput"); const t=((inp&&inp.value)||"").trim(); if(t) sendChat(); }
+    if(send){ const i=inp(); const t=((i&&i.value)||"").trim(); if(t) sendChat(); }
   }
-  mic.onclick=()=>{ if(listening) stop(true); else start(); };
+
+  mic.onclick=()=>{
+    if(busy) return;
+    if(elKey && canRec){ recording ? stopScribe() : startScribe(); }
+    else if(SR){ srListening ? stopSR(true) : startSR(); }
+    else { ph("Für genaue Sprache: ElevenLabs-Key im ⚙︎"); setTimeout(()=>ph(PH_DEFAULT),2600); }
+  };
 })();
 
 /* Anthropic-Einstellungen */
