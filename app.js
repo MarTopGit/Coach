@@ -814,6 +814,7 @@ function flyOpen(id, srcEl){
   const call=document.getElementById("call");
   call.classList.add("noslide","incoming");   // Container nicht einfliegen; großen Orb verstecken, bis der Klon gelandet ist
   openCall(id);
+  call.classList.remove("igniting");           // der Fly-in IST der Auftritt → keine zusätzliche Aura-Blitz-Animation
   // echte Endposition des großen Orbs messen und den Klon exakt dorthin fliegen (kein Doppelbild)
   requestAnimationFrame(()=>{
     const bo=document.getElementById("bigorb"); const b=bo?bo.getBoundingClientRect():null;
@@ -823,9 +824,8 @@ function flyOpen(id, srcEl){
       cl.style.width=b.width+"px"; cl.style.height=b.height+"px"; cl.style.fontSize="54px";
     });
   });
-  // beim Landen: großen Orb einblenden und Klon im selben Moment entfernen → deckungsgleich, kein Sprung
-  setTimeout(()=>{ call.classList.remove("incoming"); }, 470);
-  setTimeout(()=>{ try{cl.remove();}catch(e){} call.classList.remove("noslide"); }, 540);
+  // beim Landen: Orb SOFORT zeigen und Klon im GLEICHEN Frame entfernen → deckungsgleich, kein Aufblitzen, kein Halbtransparenz-Fenster
+  setTimeout(()=>{ call.classList.remove("incoming"); try{cl.remove();}catch(e){} call.classList.remove("noslide"); }, 480);
 }
 function orbitSay(coachId,title,html,target){
   const m=document.getElementById("orbitmsg"); if(!m) return;
@@ -1223,6 +1223,8 @@ function renderCoachCards(){
       '<div class="cm">'+MISSIONS[id]+'</div>'+
       '<div class="cq" style="border-color:'+c.hex+'">'+QUOTES[id]+'</div>'+
       '<div class="tags">'+TAGS[id].map(t=>'<span class="tag">'+t+'</span>').join("")+'</div>'+
+      (function(){ const st=dossierStatus(id); if(!st.length) return ""; const f=st.filter(x=>x.filled).length; const pct=Math.round(f/st.length*100);
+        return '<div class="dossier" style="--dc:'+c.hex+';--dp:'+pct+'%">'+(f>=st.length?'Kennt dich gut':'Lernt dich kennen')+' · '+f+'/'+st.length+'</div>'; })()+
       '<div class="acts">'+
       '<button class="chip action" data-act="call" style="flex:1">▶ Gespräch starten</button>'+
       '<button class="chip" data-act="invite">Zur Sitzung</button>'+
@@ -1570,6 +1572,78 @@ function memoryFor(coachId){
   const all = !coachId || coachId==="viktor" || coachId==="all";
   return memItems.filter(it=> all ? true : (it.coach==="core" || it.coach==="all" || it.coach===coachId));
 }
+/* ===== Dossier: was jeder Coach über Marco wissen sollte, um in seinem Fach der Beste zu sein (v63) ===== */
+const DOSSIER={
+  viktor:[
+    {key:"hauptziele", label:"Deine wichtigsten Ziele", kw:["ziel","vorhaben","erreichen"]},
+    {key:"aktuelle_prioritaet", label:"Was gerade Priorität hat", kw:["priorität","fokus gerade","wichtigste"]},
+    {key:"zeitbudget", label:"Wie viel Zeit/Energie du fürs Dranbleiben hast", kw:["zeit pro woche","zeitbudget","kapazität"]},
+    {key:"groesste_belastung", label:"Deine größte aktuelle Belastung", kw:["belastung","stress gerade","last"]}
+  ],
+  deniz:[
+    {key:"trainingsziel", label:"Dein Trainingsziel", kw:["muskel","abnehmen","kraft","aufbau","skinny"]},
+    {key:"verfuegbarkeit", label:"Trainingstage pro Woche", kw:["mal pro woche","3x","trainingstage","wie oft train"]},
+    {key:"einschraenkungen", label:"Schmerzen/Einschränkungen", kw:["leiste","op ","operation","schmerz","verletzung","bruch"]},
+    {key:"erfahrungslevel", label:"Trainingserfahrung", kw:["anfänger","erfahren","seit .* gym","wieder im gym"]},
+    {key:"equipment", label:"Gym/Equipment-Zugang", kw:["gym","studio","zuhause","hanteln","equipment"]},
+    {key:"uebung_vorlieben", label:"Lieblings-/Hassübungen", kw:["mag .* übung","hasse","lieblingsübung","ungern"]}
+  ],
+  lena:[
+    {key:"ernaehrungsziel", label:"Ernährungsziel", kw:["abnehmen","zunehmen","definieren","energie"]},
+    {key:"unvertraeglichkeiten", label:"Unverträglichkeiten", kw:["unverträglich","allergie","laktose","gluten","verträgt"]},
+    {key:"essrhythmus", label:"Essrhythmus/Mahlzeiten", kw:["mahlzeit","frühstück","essenszeiten","snack"]},
+    {key:"vorlieben_abneigungen", label:"Vorlieben & Abneigungen", kw:["mag kein","liebt","isst gern","schweinefleisch","abneigung"]},
+    {key:"kochzeit", label:"Zeit/Lust zu kochen", kw:["kochen","meal prep","koche","wenig zeit"]},
+    {key:"energie_tiefs", label:"Energietiefs im Tag", kw:["tief","nachmittag","müde","energie"]}
+  ],
+  peter:[
+    {key:"karriereziel", label:"Berufliches Ziel", kw:["karriere","job","stelle","position","bewerb"]},
+    {key:"aktuelle_situation", label:"Aktuelle berufliche Lage", kw:["arbeite als","aktuell im job","angestellt","firma"]},
+    {key:"staerken", label:"Deine Stärken", kw:["stärke","kann gut","talent"]},
+    {key:"entwicklungsfeld", label:"Woran du wachsen willst", kw:["entwickeln","schwäche","besser werden","lernen"]},
+    {key:"naechster_schritt", label:"Nächster beruflicher Schritt", kw:["nächster schritt","wechsel","bewerbung","beförder"]}
+  ],
+  elias:[
+    {key:"stressquellen", label:"Deine Stressquellen", kw:["stress","druck","überfordert","sorgen"]},
+    {key:"schlafqualitaet", label:"Wie du schläfst", kw:["schlaf","schlecht ein","wach","müde morgens"]},
+    {key:"umgang_druck", label:"Wie du mit Druck umgehst", kw:["druck","umgang","runterkommen","abschalten"]},
+    {key:"selbstgespraech", label:"Dein innerer Ton", kw:["selbstkritik","zweifel","hart zu mir","innere stimme"]},
+    {key:"energiequellen", label:"Was dir Kraft gibt", kw:["kraft","energie gibt","auftanken","freude"]}
+  ],
+  mara:[
+    {key:"was_erdet", label:"Was dich erdet", kw:["erdet","ruhe","zur ruhe","entspann"]},
+    {key:"familie", label:"Familie & nahe Menschen", kw:["frau","tochter","nola","familie","verheiratet"]},
+    {key:"tempo_neigung", label:"Neigung, zu viel zu wollen", kw:["zu viel","übernehme","tempo","perfekt"]},
+    {key:"grenzen", label:"Deine Grenzen", kw:["grenze","nein sagen","überlastung","pause"]},
+    {key:"genussquellen", label:"Was dir Genuss/Präsenz schenkt", kw:["genuss","genieße","präsenz","moment"]}
+  ]
+};
+function dossierStatus(id){
+  const slots=DOSSIER[id]||[]; const scope=memoryFor(id);
+  return slots.map(s=>{
+    const filled=scope.some(it=>{
+      if(it.key && String(it.key).toLowerCase()===s.key) return true;
+      const t=(it.text||"");
+      return (s.kw||[]).some(k=>{ try{ return new RegExp(k,"i").test(t); }catch(e){ return t.toLowerCase().includes(k); } });
+    });
+    return { key:s.key, label:s.label, filled:filled };
+  });
+}
+function dossierBlock(id){
+  const st=dossierStatus(id); if(!st.length) return "";
+  const known=st.filter(x=>x.filled).map(x=>x.label);
+  const missing=st.filter(x=>!x.filled);
+  let s="Dein Fach-Dossier über Marco (so wirst du in deiner Disziplin wirklich gut): ";
+  s+= known.length ? "Schon erfasst: "+known.join(", ")+". " : "Du weißt fachlich noch fast nichts über ihn. ";
+  if(missing.length){
+    s+="Dir fehlt noch: "+missing.map(m=>m.label).join(", ")+". "+
+       "Bring in diesem Gespräch beiläufig HÖCHSTENS eine einzige echte Frage unter, um die wichtigste dieser Lücken zu schließen — natürlich, im Fluss, nie als Fragebogen oder Aufzählung. "+
+       "Erfährst du so etwas, merke es als state mit exakt einem dieser keys: "+missing.map(m=>m.key).join(", ")+". ";
+  } else {
+    s+="Dein Grund-Dossier ist gefüllt — jetzt geht es ums VERTIEFEN und Aktualisieren: Ziele reifen, Umstände ändern sich, Neues kommt dazu. Bleib aufrichtig neugierig, frag ab und zu nach Entwicklungen, Hintergründen und Nuancen, ohne zu löchern. Aktualisiere bestehende states, wenn sich etwas ändert. Du lernst Marco nie fertig kennen. ";
+  }
+  return s;
+}
 function dateContext(){
   const now=new Date();
   const days=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
@@ -1586,7 +1660,8 @@ function memoryBlock(coachId){
   if(facts.length) s+="Dauerhaft:\n"+facts.map(f=>"- "+f.text).join("\n")+"\n";
   if(states.length) s+="Aktueller Stand:\n"+states.map(f=>"- "+(f.key?f.key+": ":"")+f.text).join("\n")+"\n";
   if(miles.length) s+="Verlauf (Entwicklung über Zeit):\n"+miles.slice(-12).map(f=>"- "+(f.date?f.date+": ":"")+f.text).join("\n")+"\n";
-  s+="Beziehe dich natürlich darauf und lerne behutsam mehr. ";
+  s+="Beziehe dich natürlich darauf und lerne behutsam mehr — du lernst Marco nie fertig kennen, eure Beziehung wird mit der Zeit vertrauter und persönlicher. "+
+     "WICHTIG: Nutze all das als stillen HINTERGRUND, nicht als Gesprächsaufhänger. Einzelne Fakten — besonders die gesundheitliche Vorgeschichte wie Operationen — bringst du nur ein, wenn sie zum aktuellen Thema wirklich passen. Dräng sie nicht in jedes Gespräch. ";
   return s;
 }
 function rememberInstructions(id){
@@ -1609,10 +1684,13 @@ function systemPrompt(id){
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
     dateContext()+
     memoryBlock(id)+
+    dossierBlock(id)+
     rememberInstructions(id);
   p+="Wenn Marco einen anderen Coach dazuholen möchte (z. B. „hol Deniz dazu“, „was sagt Lena dazu?“, „frag mal Elias“), kündige es in einem kurzen Satz an und hänge GANZ am Ende <invite>coachid</invite> an — nur die id. Erlaubte ids: "+ORDER.filter(x=>x!==id).join(", ")+". Tu das nur, wenn Marco es wünscht oder es klar sinnvoll ist. ";
-  if(id==="deniz"||id==="viktor"){ const tb=trainingSummary(); if(tb) p+=tb; }
-  if(id==="deniz"||id==="elias"||id==="mara"||id==="viktor"){ const wb=whoopSummary(); if(wb) p+=wb; }
+  let injData=false;
+  if(id==="deniz"||id==="viktor"){ const tb=trainingSummary(); if(tb){ p+=tb; injData=true; } }
+  if(id==="deniz"||id==="elias"||id==="mara"||id==="viktor"){ const wb=whoopSummary(); if(wb){ p+=wb; injData=true; } }
+  if(injData) p+="Behandle diese Trainings- und Whoop-Zahlen als leisen HINTERGRUND-Kontext, niemals als Gesprächsaufhänger. Sprich sie nur an, wenn sie fürs aktuelle Thema wirklich relevant sind oder Marco sie selbst anspricht — für die reine Werte-Schau hat er seine Whoop-App. Eröffne ein Gespräch nie mit diesen Zahlen. ";
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
