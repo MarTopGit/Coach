@@ -226,7 +226,8 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 #teamrow .orb.activeSpk{opacity:1;transform:scale(1.32);z-index:3;box-shadow:0 8px 30px var(--spk,rgba(0,0,0,.18))}
 #callcenter{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;padding-top:2.5vh;flex-shrink:0}
 #bigorbwrap{position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center}
-#bigorb{width:156px;height:156px;font-size:54px;transition:background .5s ease,box-shadow .5s ease;z-index:2}
+#bigorb{width:156px;height:156px;font-size:54px;transition:background .5s ease,box-shadow .5s ease,opacity .28s ease;z-index:2}
+#call.incoming #bigorb{opacity:0}
 .ringp{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--ring,rgba(0,0,0,.2));opacity:0;z-index:1}
 #call.speaking .ringp{animation:ringpulse 1.6s ease-out infinite}
 #call.speaking .ringp.r2{animation-delay:.55s}
@@ -473,14 +474,14 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 61</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 62</div>
 </div>
 
 <div id="pills"><div class="inner">
   <button class="pillbtn tabactive" data-v="home">Heute</button>
-  <button class="pillbtn" data-v="coaches">Coaches</button>
   <button class="pillbtn" data-v="runde">Runde</button>
   <button class="pillbtn" data-v="tag">Tag</button>
+  <button class="pillbtn" data-v="coaches">Coaches</button>
   <button class="pillbtn" data-v="log">Log</button>
 </div></div>
 
@@ -614,6 +615,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 </body>
 </html>

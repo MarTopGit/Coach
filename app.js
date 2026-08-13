@@ -11,7 +11,7 @@ const COACHES = {
 };
 const ORDER = Object.keys(COACHES);
 const SPECIALISTS = ORDER.filter(id=>id!=="viktor"); // v43: Viktor ist der Kern, diese 5 umkreisen ihn
-const AVV="?v=61"; // Avatar-Cache-Bust (früh definiert, da loadAvatars zeitig läuft)
+const AVV="?v=62"; // Avatar-Cache-Bust (früh definiert, da loadAvatars zeitig läuft)
 
 const DEMO = {
   recovery: 64, sleep:"5 h 40 min", hrv:"38 ms",
@@ -812,18 +812,20 @@ function flyOpen(id, srcEl){
   orbBg(cl,id);
   document.body.appendChild(cl);
   const call=document.getElementById("call");
-  call.classList.add("noslide");        // Container nicht einfliegen lassen → bigorb sofort an Endposition
+  call.classList.add("noslide","incoming");   // Container nicht einfliegen; großen Orb verstecken, bis der Klon gelandet ist
   openCall(id);
-  // echte Endposition des großen Orbs messen und den Klon exakt dorthin fliegen (kein Nachjustieren mehr)
+  // echte Endposition des großen Orbs messen und den Klon exakt dorthin fliegen (kein Doppelbild)
   requestAnimationFrame(()=>{
     const bo=document.getElementById("bigorb"); const b=bo?bo.getBoundingClientRect():null;
-    if(!b||!b.width){ try{cl.remove();}catch(e){} call.classList.remove("noslide"); return; }
+    if(!b||!b.width){ try{cl.remove();}catch(e){} call.classList.remove("noslide","incoming"); return; }
     requestAnimationFrame(()=>{
       cl.style.left=b.left+"px"; cl.style.top=b.top+"px";
       cl.style.width=b.width+"px"; cl.style.height=b.height+"px"; cl.style.fontSize="54px";
     });
   });
-  setTimeout(()=>{ try{cl.remove();}catch(e){} call.classList.remove("noslide"); }, 560);
+  // beim Landen: großen Orb einblenden und Klon im selben Moment entfernen → deckungsgleich, kein Sprung
+  setTimeout(()=>{ call.classList.remove("incoming"); }, 470);
+  setTimeout(()=>{ try{cl.remove();}catch(e){} call.classList.remove("noslide"); }, 540);
 }
 function orbitSay(coachId,title,html,target){
   const m=document.getElementById("orbitmsg"); if(!m) return;
@@ -922,7 +924,17 @@ function ping(coachId,title,body,target){
   if(navigator.vibrate) navigator.vibrate(60);
   setTimeout(hideToast, 9000);
 }
-function hideToast(){ document.getElementById("toast").classList.remove("show"); }
+function hideToast(){ const t=document.getElementById("toast"); if(t){ t.classList.remove("show"); t.style.transform=""; } }
+/* Nachricht nach oben wegwischen */
+(function(){
+  const t=document.getElementById("toast"); if(!t) return;
+  let sy=0, dy=0, dragging=false, moved=false;
+  t.addEventListener("touchstart",e=>{ if(!t.classList.contains("show"))return; sy=e.touches[0].clientY; dy=0; moved=false; dragging=true; t.style.transition="none"; },{passive:true});
+  t.addEventListener("touchmove",e=>{ if(!dragging)return; dy=e.touches[0].clientY-sy; if(Math.abs(dy)>6) moved=true; if(dy<0) t.style.transform="translateY("+dy+"px)"; },{passive:true});
+  t.addEventListener("touchend",()=>{ if(!dragging)return; dragging=false; t.style.transition="";
+    if(dy<-38){ t.classList.remove("show"); t.style.transform=""; } else { t.style.transform=""; } });
+  t.addEventListener("click",e=>{ if(moved){ e.stopPropagation(); e.preventDefault(); moved=false; } }, true);
+})();
 
 const MISSIONS={
   viktor:"Hält das große Ganze — priorisiert, koordiniert und löst Zielkonflikte im Team.",
