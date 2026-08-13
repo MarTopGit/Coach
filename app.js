@@ -422,17 +422,23 @@ function initGL(){
 applyMood(); startParallax(); initGL(); loadAvatars();
 (function(){
   const intro=document.getElementById("intro"); if(!intro) return;
+  // Nur einmal pro App-Session zeigen — sonst sofort weg (verhindert doppeltes Logo beim (Neu-)Rendern)
+  let shown=false; try{ shown=sessionStorage.getItem("introShown")==="1"; }catch(e){}
+  if(shown){ intro.classList.add("hidden"); try{ intro.remove(); }catch(e){} return; }
+  try{ sessionStorage.setItem("introShown","1"); }catch(e){}
   const ring=intro.querySelector(".ring");
-  ORDER.forEach((id,i)=>{
-    const a=Math.PI/2 - i*Math.PI/3, R=44;
-    const dt=document.createElement("div"); dt.className="d";
-    dt.style.background=COACHES[id].hex;
-    dt.style.left=(60+Math.cos(a)*R-11).toFixed(1)+"px";
-    dt.style.top=(60-Math.sin(a)*R-11).toFixed(1)+"px";
-    dt.style.animationDelay=(0.15+i*0.09)+"s";
-    ring.appendChild(dt);
-  });
-  setTimeout(()=>{ intro.classList.add("hidden"); }, 2500);
+  if(ring && !ring.querySelector(".d")){                 // Dots nur anlegen, wenn noch keine da sind (kein Doppel)
+    ORDER.forEach((id,i)=>{
+      const a=Math.PI/2 - i*Math.PI/3, R=44;
+      const dt=document.createElement("div"); dt.className="d";
+      dt.style.background=COACHES[id].hex;
+      dt.style.left=(60+Math.cos(a)*R-11).toFixed(1)+"px";
+      dt.style.top=(60-Math.sin(a)*R-11).toFixed(1)+"px";
+      dt.style.animationDelay=(0.15+i*0.09)+"s";
+      ring.appendChild(dt);
+    });
+  }
+  setTimeout(()=>{ intro.classList.add("hidden"); try{ intro.remove(); }catch(e){} }, 2500);
 })();
 
 const AUDIO_CACHE="coach-audio-v3";
@@ -754,8 +760,8 @@ function renderViktorHero(){
   o.setAttribute("style", orbStyle("viktor"));
   o.classList.add("orb"); o.classList.toggle("hasimg", !!AVOK.viktor);
   o.innerHTML=avatarInner("viktor")+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES.viktor.hex+'55"></span>';
-  o.onclick=()=>flyOpen("viktor",o);
-  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>flyOpen("viktor",o);
+  o.onclick=()=>openCall("viktor");                                   // Hero ist nicht drehbar → direkt öffnen (keine Drag-Sperre)
+  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>openCall("viktor");
 }
 function coachHasNote(id){
   const w=(typeof whoopData!=="undefined"&&whoopData&&whoopData.length)?whoopData[0]:null;
@@ -906,14 +912,26 @@ function ping(coachId,title,body,target){
   setTimeout(hideToast, 9000);
 }
 function hideToast(){ const t=document.getElementById("toast"); if(t){ t.classList.remove("show"); t.style.transform=""; } }
-/* Nachricht nach oben wegwischen */
+/* Nachricht nach oben wegwischen — nur die Karte bewegt sich, Hintergrund bleibt, weiches Wegfahren */
 (function(){
   const t=document.getElementById("toast"); if(!t) return;
   let sy=0, dy=0, dragging=false, moved=false;
   t.addEventListener("touchstart",e=>{ if(!t.classList.contains("show"))return; sy=e.touches[0].clientY; dy=0; moved=false; dragging=true; t.style.transition="none"; },{passive:true});
-  t.addEventListener("touchmove",e=>{ if(!dragging)return; dy=e.touches[0].clientY-sy; if(Math.abs(dy)>6) moved=true; if(dy<0) t.style.transform="translateY("+dy+"px)"; },{passive:true});
-  t.addEventListener("touchend",()=>{ if(!dragging)return; dragging=false; t.style.transition="";
-    if(dy<-38){ t.classList.remove("show"); t.style.transform=""; } else { t.style.transform=""; } });
+  t.addEventListener("touchmove",e=>{ if(!dragging)return; dy=e.touches[0].clientY-sy;
+    if(Math.abs(dy)>5) moved=true;
+    if(dy<0){ e.preventDefault(); t.style.transform="translateY("+dy+"px)"; }       // nur nach oben; Seite scrollt NICHT mit
+    else { t.style.transform="translateY("+(dy*0.18).toFixed(1)+"px)"; }             // nach unten nur minimaler Widerstand
+  },{passive:false});
+  t.addEventListener("touchend",()=>{ if(!dragging)return; dragging=false;
+    t.style.transition="transform .34s cubic-bezier(.4,0,.2,1)";
+    if(dy<-42){                                                                      // genug gewischt → weich ganz nach oben rausfahren
+      t.style.transform="translateY(-170%)";
+      setTimeout(()=>{ t.classList.remove("show"); t.style.transform=""; t.style.transition=""; }, 340);
+    } else {                                                                         // zu wenig → sanft zurück an seinen Platz
+      t.style.transform="";
+      setTimeout(()=>{ t.style.transition=""; }, 340);
+    }
+  });
   t.addEventListener("click",e=>{ if(moved){ e.stopPropagation(); e.preventDefault(); moved=false; } }, true);
 })();
 
