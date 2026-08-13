@@ -327,11 +327,12 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 @keyframes centerin{from{opacity:.4}to{opacity:1}}
 #call.igniting #call-aura{animation:auraflash .8s ease}
 @keyframes auraflash{0%{opacity:.2}30%{opacity:1}100%{opacity:.95}}
-#call.igniting #bigorb{animation:orbignite .6s ease}
-@keyframes orbignite{0%{box-shadow:0 6px 12px rgba(0,0,0,.12)}45%{box-shadow:0 6px 40px var(--coach)}100%{box-shadow:0 6px 12px rgba(0,0,0,.12)}}
+#call.igniting #bigorb{animation:orbreveal .58s cubic-bezier(.2,1,.36,1)}
+@keyframes orbreveal{0%{transform:scale(.66);opacity:0;box-shadow:0 6px 12px rgba(0,0,0,.12)}
+  55%{opacity:1;box-shadow:0 8px 46px var(--coach)}100%{transform:scale(1);opacity:1;box-shadow:0 8px 26px rgba(0,0,0,.14)}}
 #call.igniting #transcript,#call.igniting #chips{animation:fade .6s ease .1s both}
 /* v57: Ruhe-Präsenz — Coach atmet leise, wenn er zuhört */
-#call.open:not(.speaking):not(.teammode) #bigorb{animation:idlebreath 5.2s ease-in-out infinite}
+#call.open:not(.speaking):not(.teammode):not(.igniting) #bigorb{animation:idlebreath 5.2s ease-in-out infinite}
 @keyframes idlebreath{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
 /* v60: Vita — animierte Journey-Timeline */
 .vitahint{position:absolute;left:14px;bottom:14px;z-index:4;font-size:12px;font-weight:700;letter-spacing:.02em;
@@ -476,7 +477,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 64</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 65</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -617,6 +618,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=64"></script>
+<script src="app.js?v=65"></script>
 </body>
 </html>

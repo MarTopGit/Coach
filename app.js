@@ -805,27 +805,8 @@ function orbitLoop(nowT){
 }
 function flyOpen(id, srcEl){
   if(_dragMoved>8){ return; }
-  if(!srcEl || !srcEl.getBoundingClientRect){ openCall(id); return; }
-  const r=srcEl.getBoundingClientRect();
-  if(!r.width){ openCall(id); return; }
-  const cl=el('<div class="orb'+(AVOK[id]?' hasimg':'')+'" style="position:fixed;z-index:75;margin:0;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px;font-size:18px;'+orbStyle(id)+';transition:all .46s cubic-bezier(.3,1,.3,1)">'+avatarInner(id)+'</div>');
-  orbBg(cl,id);
-  document.body.appendChild(cl);
-  const call=document.getElementById("call");
-  call.classList.add("noslide","incoming");   // Container nicht einfliegen; großen Orb verstecken, bis der Klon gelandet ist
+  // Kein fliegender Klon mehr (Quelle des Ruckelns): sauberer, in sich geschlossener Auftritt des großen Orbs.
   openCall(id);
-  call.classList.remove("igniting");           // der Fly-in IST der Auftritt → keine zusätzliche Aura-Blitz-Animation
-  // echte Endposition des großen Orbs messen und den Klon exakt dorthin fliegen (kein Doppelbild)
-  requestAnimationFrame(()=>{
-    const bo=document.getElementById("bigorb"); const b=bo?bo.getBoundingClientRect():null;
-    if(!b||!b.width){ try{cl.remove();}catch(e){} call.classList.remove("noslide","incoming"); return; }
-    requestAnimationFrame(()=>{
-      cl.style.left=b.left+"px"; cl.style.top=b.top+"px";
-      cl.style.width=b.width+"px"; cl.style.height=b.height+"px"; cl.style.fontSize="54px";
-    });
-  });
-  // beim Landen: Orb SOFORT zeigen und Klon im GLEICHEN Frame entfernen → deckungsgleich, kein Aufblitzen, kein Halbtransparenz-Fenster
-  setTimeout(()=>{ call.classList.remove("incoming"); try{cl.remove();}catch(e){} call.classList.remove("noslide"); }, 480);
 }
 function orbitSay(coachId,title,html,target){
   const m=document.getElementById("orbitmsg"); if(!m) return;
@@ -1687,10 +1668,15 @@ function systemPrompt(id){
     dossierBlock(id)+
     rememberInstructions(id);
   p+="Wenn Marco einen anderen Coach dazuholen möchte (z. B. „hol Deniz dazu“, „was sagt Lena dazu?“, „frag mal Elias“), kündige es in einem kurzen Satz an und hänge GANZ am Ende <invite>coachid</invite> an — nur die id. Erlaubte ids: "+ORDER.filter(x=>x!==id).join(", ")+". Tu das nur, wenn Marco es wünscht oder es klar sinnvoll ist. ";
+  p+="Eröffne ein Gespräch IMMER menschlich — mit einer echten Begrüßung oder indem du an Marcos Thema bzw. euren letzten Stand anknüpfst. Beginne NIEMALS mit Messwerten, Zahlen oder einem Lagebericht (Recovery, Schlaf, Strain, Trainingszahlen). ";
   let injData=false;
-  if(id==="deniz"||id==="viktor"){ const tb=trainingSummary(); if(tb){ p+=tb; injData=true; } }
+  if(id==="deniz"){ const tb=trainingSummary(); if(tb){ p+=tb; injData=true; } }
+  else if(id==="viktor"){ const tb=trainingSummary(); if(tb){ p+=tb; injData=true; } }
   if(id==="deniz"||id==="elias"||id==="mara"||id==="viktor"){ const wb=whoopSummary(); if(wb){ p+=wb; injData=true; } }
-  if(injData) p+="Behandle diese Trainings- und Whoop-Zahlen als leisen HINTERGRUND-Kontext, niemals als Gesprächsaufhänger. Sprich sie nur an, wenn sie fürs aktuelle Thema wirklich relevant sind oder Marco sie selbst anspricht — für die reine Werte-Schau hat er seine Whoop-App. Eröffne ein Gespräch nie mit diesen Zahlen. ";
+  if(injData){
+    p+="Behandle diese Trainings- und Whoop-Zahlen als leisen HINTERGRUND-Kontext, niemals als Gesprächsaufhänger. Sprich sie nur an, wenn sie fürs aktuelle Thema wirklich relevant sind oder Marco sie selbst anspricht — für die reine Werte-Schau hat er seine Whoop-App. ";
+    if(id==="viktor") p+="Für dich als Head Coach sind diese Zahlen NUR grober Teil des Gesamtbilds — nutze sie still zum Koordinieren, erwähne sie höchstens ganz beiläufig und niemals als Einstieg. Die Details gehören Deniz. ";
+  }
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
@@ -1886,7 +1872,7 @@ function enterLive(id){
   document.getElementById("chips").innerHTML="";
   showChatbar();
   const trigger = (id==="viktor")
-    ? "(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn kurz, gib einen knappen Lagebericht NUR aus den dir bekannten echten Daten — falls keine da sind, lass das weg und erfinde nichts —, und frag ihn, was heute sein Fokus ist oder wie es ihm geht. Kurz: ein bis zwei Sätze plus eine Frage.)"
+    ? "(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn warm und persönlich und frag ihn offen, was heute ansteht oder wie es ihm geht — genau EINE Frage. Beginne AUF KEINEN FALL mit Messwerten, Recovery, Schlaf, Strain oder Zahlen; die sind nur dein stiller Hintergrund fürs Gesamtbild. Kurz: ein bis zwei Sätze plus die Frage.)"
     : "(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
   convHistory.push({ role:"user", content:trigger });
   streamCoach(id, ++seqToken);
