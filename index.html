@@ -226,8 +226,18 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 #teamrow .orb.activeSpk{opacity:1;transform:scale(1.32);z-index:3;box-shadow:0 8px 30px var(--spk,rgba(0,0,0,.18))}
 #callcenter{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;padding-top:2.5vh;flex-shrink:0}
 #bigorbwrap{position:relative;width:190px;height:190px;display:flex;align-items:center;justify-content:center}
-#bigorb{width:156px;height:156px;font-size:54px;transition:background .5s ease,box-shadow .5s ease;z-index:2}
+#bigorb{width:156px;height:156px;font-size:54px;transition:background .5s ease,box-shadow .5s ease,width .4s ease,height .4s ease,font-size .4s ease;z-index:2}
 #call.incoming #bigorb{opacity:0}
+/* v75: nach den ersten Nachrichten Coach kompakter → mehr Platz für den Chat */
+#bigorbwrap{transition:width .4s ease,height .4s ease}
+#cname{transition:font-size .35s ease,margin .35s ease}
+#call.chatting #bigorbwrap{width:104px;height:104px}
+#call.chatting #bigorb{width:80px;height:80px;font-size:28px}
+#call.chatting #callcenter{padding-top:1vh}
+#call.chatting #cname{font-size:18px;margin-top:8px}
+#call.chatting #crole{font-size:10px}
+#call.chatting #cstate{margin-top:5px}
+#call.chatting .ringp{display:none}
 .ringp{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--ring,rgba(0,0,0,.2));opacity:0;z-index:1}
 #call.speaking .ringp{animation:ringpulse 1.6s ease-out infinite}
 #call.speaking .ringp.r2{animation-delay:.55s}
@@ -242,13 +252,13 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 .eq i:nth-child(3){height:8px;animation-delay:.3s}.eq i:nth-child(4){height:11px;animation-delay:.45s}
 @keyframes eqb{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
 #transcript{position:relative;z-index:2;flex:1;overflow-y:auto;padding:22px 28px 12px;display:flex;flex-direction:column;gap:16px}
-.tline{font-size:20.5px;line-height:1.5;font-weight:500;letter-spacing:-.005em;max-width:560px}
+.tline{font-size:16px;line-height:1.55;font-weight:500;letter-spacing:-.005em;max-width:560px}
 .tline .w{opacity:0;transition:opacity .2s ease}
 .tline .w.on{opacity:1}
-.tline.old{font-size:14px;color:var(--text3);font-weight:400}
+.tline.old{color:var(--text3);font-weight:400}
 .tline .twho{display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:5px}
 .tme{align-self:flex-end;background:var(--blue);color:#fff;border:none;
-  border-radius:18px;border-bottom-right-radius:6px;padding:9px 15px;font-size:14.5px;animation:fade .3s}
+  border-radius:18px;border-bottom-right-radius:6px;padding:9px 15px;font-size:15.5px;line-height:1.4;animation:fade .3s}
 .tsys{align-self:center;font-size:11px;letter-spacing:.06em;color:var(--text3);background:rgba(0,0,0,.04);
   border:1px solid var(--line);padding:5px 13px;border-radius:99px;animation:fade .4s;text-align:center}
 #chips{position:relative;z-index:2;display:flex;flex-wrap:wrap;gap:9px;justify-content:center;
@@ -378,7 +388,9 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 #requests.has{display:flex;flex-direction:column;gap:9px;margin:4px 0 8px;animation:fade .4s ease}
 #requests .reqhead{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin:2px 2px 2px}
 .reqcard{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
-  border-radius:18px;padding:11px 13px;box-shadow:var(--soft);cursor:pointer;animation:rise .4s ease;transition:transform .12s}
+  border-radius:18px;padding:11px 13px;box-shadow:var(--soft);cursor:pointer;transition:transform .12s;
+  animation:reqin .5s cubic-bezier(.2,1,.36,1) both}
+@keyframes reqin{from{opacity:0;transform:translateY(-16px) scale(.98)}to{opacity:1;transform:none}}
 .reqcard:active{transform:scale(.985)}
 .reqcard .rqorb{width:44px;height:44px;font-size:15px;flex-shrink:0}
 .reqcard .rqbody{flex:1;min-width:0}
@@ -491,7 +503,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 74</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 75</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -632,6 +644,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=74"></script>
+<script src="app.js?v=75"></script>
 </body>
 </html>

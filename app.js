@@ -561,6 +561,7 @@ function openCall(id, openingNote){
   }
   setSpeaker(isTeam?"viktor":id, true);
   call.classList.toggle("teammode", isTeam);
+  call.classList.remove("chatting");                      // Coach startet wieder groß/präsent
   call.classList.add("open");
   call.classList.add("igniting");                         // Eintritt: Orb entzündet sich, Center schiebt sich heran
   setTimeout(()=>call.classList.remove("igniting"), 780);
@@ -616,7 +617,7 @@ function setSpeaker(id, instant){
   orb.innerHTML=avatarInner(id)+'<i class="sheen"></i><span class="ring" style="border-color:'+c.hex+'40"></span>';
   curHex=c.hex;
   document.getElementById("cname").textContent=c.name;
-  document.getElementById("crole").textContent=c.role+" · "+c.vibe;
+  document.getElementById("crole").textContent=c.role;
   const callEl=document.getElementById("call");
   callEl.style.setProperty("--coach", c.hex);
   const sendb=document.getElementById("chatsend"); if(sendb) sendb.style.background=c.hex;
@@ -1234,17 +1235,15 @@ function renderCoachCards(){
         return '<div class="dossier" style="--dc:'+c.hex+';--dp:'+pct+'%">'+(f>=st.length?'Kennt dich gut':'Lernt dich kennen')+' · '+f+'/'+st.length+'</div>'; })()+
       '<div class="acts">'+
       '<button class="chip action" data-act="call" style="flex:1">▶ Gespräch starten</button>'+
-      '<button class="chip" data-act="invite">Zur Sitzung</button>'+
-      '</div>'+
-      (id==="mara" ? '<button class="chip" data-act="headspace" style="width:100%;margin-top:8px">🧘 Headspace öffnen</button>' : '')+
-      '</div></div>';
+      (id==="mara" ? '<button class="chip" data-act="headspace">🧘 Headspace</button>' : '<button class="chip" data-act="invite">Zur Sitzung</button>')+
+      '</div></div></div>';
   }).join("");
   const dots=document.getElementById("coachdots");
   dots.innerHTML=ORDER.map((_,i)=>'<i class="'+(i===0?"on":"")+'"></i>').join("");
   car.querySelectorAll(".ccard").forEach(card=>{
     const id=card.dataset.c;
     card.querySelector('[data-act="call"]').onclick=()=>openCall(id);
-    card.querySelector('[data-act="invite"]').onclick=()=>{
+    const invb=card.querySelector('[data-act="invite"]'); if(invb) invb.onclick=()=>{
       showView("runde");
       setTimeout(()=>{ setPickerSelection([id]); },80);
     };
@@ -1708,9 +1707,9 @@ function renderRequests(){
   const list=activeRequests();
   if(!list.length){ box.className=""; box.innerHTML=""; return; }
   box.className="has";
-  box.innerHTML='<div class="reqhead">Anfragen deines Teams</div>'+list.map(r=>{
+  box.innerHTML='<div class="reqhead">Anfragen deines Teams</div>'+list.map((r,i)=>{
     const c=COACHES[r.coach];
-    return '<div class="reqcard" data-k="'+r.key+'">'+
+    return '<div class="reqcard" data-k="'+r.key+'" style="animation-delay:'+(0.05+i*0.12).toFixed(2)+'s">'+
       '<div class="orb rqorb'+(AVOK[r.coach]?' hasimg':'')+'" style="'+orbStyle(r.coach)+'">'+avatarInner(r.coach)+'</div>'+
       '<div class="rqbody"><div class="rqname" style="color:'+c.hex+'">'+esc(c.name)+'</div>'+
       '<div class="rqtext">'+esc(r.text)+'</div></div>'+
@@ -1992,6 +1991,7 @@ function sendChat(){
   if(liveTeam){ inp.value=""; sendTeamChat(txt); return; }
   if(!liveMode || !liveCoachId) return;
   inp.value="";
+  document.getElementById("call").classList.add("chatting");   // Coach kompakter, mehr Platz für den Chat
   addOldify();
   const log=document.getElementById("transcript");
   log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
@@ -2087,13 +2087,7 @@ const _sb=document.getElementById("startbtn"); if(_sb) _sb.onclick=()=>openCall(
 })();
 runFX("home");
 
-setTimeout(()=>{
-  if(callOpen || !anthKey) return;
-  const who = memItems.length ? "elias" : "viktor";
-  ping(who,"Kennenlernen","Ich bin neugierig auf dich — hast du kurz Zeit?",who);
-  orbPulse(who,true);
-  orbitSay(who,"Neugierig","<b>"+COACHES[who].name+" möchte dich kennenlernen.</b>");
-}, 9000);
+/* Alter Start-Ping entfernt — proaktive Kontaktaufnahme läuft jetzt über die Anfragen-Fläche (Inbox). */
 
 const _pb=document.getElementById("pausebtn"); if(_pb) _pb.onclick=()=>setPaused(!paused);
 
