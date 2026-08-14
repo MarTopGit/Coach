@@ -373,6 +373,19 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 #vitacredo{font-family:var(--serif);font-size:18px;line-height:1.55;text-align:center;color:var(--text);
   max-width:430px;margin:22px auto 0;padding:0 6px;font-style:italic}
 #vitacall{display:block;margin:26px auto 4px;max-width:280px}
+/* v72: Anfragen-Fläche — Coaches melden sich proaktiv */
+#requests{display:none}
+#requests.has{display:flex;flex-direction:column;gap:9px;margin:4px 0 8px;animation:fade .4s ease}
+#requests .reqhead{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin:2px 2px 2px}
+.reqcard{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:18px;padding:11px 13px;box-shadow:var(--soft);cursor:pointer;animation:rise .4s ease;transition:transform .12s}
+.reqcard:active{transform:scale(.985)}
+.reqcard .rqorb{width:44px;height:44px;font-size:15px;flex-shrink:0}
+.reqcard .rqbody{flex:1;min-width:0}
+.reqcard .rqname{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.reqcard .rqtext{font-size:14px;color:var(--text);line-height:1.35;margin-top:2px}
+.reqcard .rqx{flex-shrink:0;background:none;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:6px 6px;line-height:1;border-radius:50%}
+.reqcard .rqx:active{background:rgba(0,0,0,.06)}
 /* v63: Dossier-Fortschritt (Coach lernt Marco kennen) */
 .dossier{position:relative;font-size:11.5px;font-weight:600;color:var(--text3);margin:4px 0 12px;padding-top:9px}
 .dossier::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;border-radius:3px;background:rgba(0,0,0,.08)}
@@ -391,6 +404,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
         <div class="vtoggle" id="settingsbtn" role="button" aria-label="Stimmen-Einstellungen">⚙︎</div>
       </div>
     </div>
+    <div id="requests"></div>
     <div id="homehero">
       <h1 id="greeting">Guten Morgen, Marco</h1>
       <div id="vhero">
@@ -477,7 +491,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 66</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 74</div>
 </div>
 
 <div id="pills"><div class="inner">
@@ -618,6 +632,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 
 <div id="toast"><div class="t-inner" id="toastinner"></div></div>
 
-<script src="app.js?v=66"></script>
+<script src="app.js?v=74"></script>
 </body>
 </html>
