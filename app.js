@@ -1728,8 +1728,22 @@ function dateContext(){
   const days=["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
   const months=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
   const iso=now.toISOString().slice(0,10);
-  return "Heute ist "+days[now.getDay()]+", der "+now.getDate()+". "+months[now.getMonth()]+" "+now.getFullYear()+" ("+iso+"). "+
-    "Rechne alle Zeitangaben immer gegen dieses heutige Datum. Ein früher notierter Plan („heute/morgen“ aus einer alten Notiz) kann längst in der Vergangenheit liegen — nimm nicht an, dass er noch bevorsteht. Im Zweifel über das Timing: frag kurz nach, statt es zu erfinden. ";
+  const hh=now.getHours(), mm=now.getMinutes();
+  const timeStr=(hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
+  const tod = hh<6?"tiefe Nacht":hh<11?"Morgen":hh<14?"Mittag":hh<18?"Nachmittag":hh<22?"Abend":"später Abend";
+  return "Heute ist "+days[now.getDay()]+", der "+now.getDate()+". "+months[now.getMonth()]+" "+now.getFullYear()+" ("+iso+"), und es ist jetzt "+timeStr+" Uhr ("+tod+"). "+
+    "Du KENNST also Datum und Uhrzeit — behaupte nie, du wüsstest die Zeit nicht. Beziehe die Tageszeit natürlich ein: morgens der Start in den Tag, mittags/nachmittags mittendrin, abends eher Rückblick und Ausklang. Frag z. B. abends nicht, was Marco heute noch vorhat, als stünde der Tag am Anfang. "+
+    "Rechne alle Zeitangaben gegen dieses Datum. Ein früher notierter Plan („heute/morgen“ aus einer alten Notiz) kann längst vorbei sein — nimm nicht an, dass er noch bevorsteht. Im Zweifel übers Timing: kurz nachfragen statt erfinden. ";
+}
+function recentContext(id){
+  if(typeof logEntries==="undefined" || !logEntries || !logEntries.length) return "";
+  const mine = (id==="viktor") ? logEntries : logEntries.filter(e=>e.coach===id || e.coach==="viktor");
+  const list = mine.slice(0,4);
+  if(!list.length) return "";
+  const fmt=(iso)=>{ try{ const days=Math.floor((Date.now()-new Date(iso).getTime())/864e5);
+    return days<=0?"heute":days===1?"gestern":("vor "+days+" Tagen"); }catch(e){ return ""; } };
+  return "Eure letzten Gespräche (für Kontinuität — beziehe dich natürlich darauf und hak bei einem offenen nächsten Schritt freundlich nach, wie es damit lief; nicht jedes Mal, nur wenn es passt):\n"+
+    list.map(e=>"- ("+fmt(e.d)+") "+e.text).join("\n")+"\n";
 }
 function memoryBlock(coachId){
   const items=memoryFor(coachId);
@@ -1765,6 +1779,7 @@ function systemPrompt(id){
     MANTRA+
     dateContext()+
     memoryBlock(id)+
+    recentContext(id)+
     dossierBlock(id)+
     rememberInstructions(id);
   p+="Wenn Marco einen anderen Coach dazuholen möchte (z. B. „hol Deniz dazu“, „was sagt Lena dazu?“, „frag mal Elias“), kündige es in einem kurzen Satz an und hänge GANZ am Ende <invite>coachid</invite> an — nur die id. Erlaubte ids: "+ORDER.filter(x=>x!==id).join(", ")+". Tu das nur, wenn Marco es wünscht oder es klar sinnvoll ist. ";
@@ -1865,7 +1880,7 @@ function askClaude(id, history, key){
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":key||anthKey,
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:640, system:systemPrompt(id), messages:history })
+    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:900, system:systemPrompt(id), messages:history })
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
     .then(d=>{ const parts=(d.content||[]).filter(x=>x.type==="text").map(x=>x.text); return (parts.join(" ")||"…").trim(); });
 }
@@ -1914,32 +1929,30 @@ function revealSynced(id, clean, token, typ){
   let line=null, spans=null, wi=0, rev=null, started=false;
   const stop=()=>{ if(rev){ clearInterval(rev); rev=null; } };
   // beim Enthüllen dem aktuellen Wort nach unten folgen, wenn es unter den sichtbaren Rand läuft
-  const follow=(sp)=>{ try{ const cr=log.getBoundingClientRect(), er=sp.getBoundingClientRect();
+  const follow=(sp)=>{ try{ if(line && line!==log.lastElementChild) return;   // nur der aktuellen Zeile folgen
+    const cr=log.getBoundingClientRect(), er=sp.getBoundingClientRect();
     if(er.bottom > cr.bottom-10){ log.scrollTop += (er.bottom-(cr.bottom-10)); } }catch(e){} };
   const finishAll=()=>{ stop(); if(spans){ spans.forEach(s=>s.classList.add("on")); if(spans.length) follow(spans[spans.length-1]); } };
   const beginReveal=(ms)=>{
-    if(token!==seqToken || started) return; started=true;
+    if(started) return; started=true;
     try{ if(typ) typ.remove(); }catch(e){}
-    setSpeakingUI(true, id);                    // Atmen/Aura/„spricht" genau ab Sprechbeginn
     line=el('<div class="tline">'+words.map(w=>'<span class="w">'+esc(w)+'</span>').join(" ")+'</div>');
     log.appendChild(line); spans=line.querySelectorAll(".w");
+    if(token!==seqToken){ finishAll(); return; }   // überholt → Nachricht sofort komplett zeigen, nie abschneiden
+    setSpeakingUI(true, id);                        // Atmen/Aura/„spricht" genau ab Sprechbeginn
     log.scrollTop=Math.max(0, line.offsetTop-14);   // Anfang oben zeigen, dann mitlaufen
     const per=Math.max(45,(ms*0.94)/Math.max(1,words.length));
     rev=setInterval(()=>{
-      if(token!==seqToken){ stop(); return; }
       if(wi<spans.length){ const sp=spans[wi++]; sp.classList.add("on"); follow(sp); }
       else stop();
     }, per);
   };
-  return speak(id, clean, (ms)=>beginReveal(ms)).then(()=>{
-    if(token!==seqToken) return;
+  const done=()=>{
     if(!started) beginReveal(estMs(clean,COACHES[id].rate));
-    finishAll(); setSpeakingUI(false);
-  }).catch(()=>{
-    if(token!==seqToken) return;
-    if(!started) beginReveal(estMs(clean,COACHES[id].rate));
-    finishAll(); setSpeakingUI(false);
-  });
+    finishAll();                                    // IMMER voll enthüllen — Text wird nie abgeschnitten
+    if(token===seqToken) setSpeakingUI(false);
+  };
+  return speak(id, clean, (ms)=>beginReveal(ms)).then(done).catch(done);
 }
 /* v31: 1:1-Antwort holen, dann im Sprechtakt zeigen */
 function streamCoach(id, token){
@@ -2120,6 +2133,36 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
   };
 })();
 
+/* Push-Benachrichtigungen (Web Push) — App meldet sich, auch wenn geschlossen */
+const VAPID_PUBLIC="BEEC6B36TD4oxBTLIDW59f7MfX2LWE5QP2FvSDBrNq_51udTXCGY2yCZehp7vlROKW-yKEwNvQp2Xes5lrHxLyE";
+function urlB64ToUint8(base64){
+  const pad="=".repeat((4-base64.length%4)%4);
+  const b64=(base64+pad).replace(/-/g,"+").replace(/_/g,"/");
+  const raw=atob(b64); const arr=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) arr[i]=raw.charCodeAt(i); return arr;
+}
+async function enablePush(){
+  const st=document.getElementById("pushstatus"); const set=(t)=>{ if(st) st.textContent=t; };
+  if(!sbUser||!sbToken){ set("Bitte zuerst oben unter „Konto & Sync“ anmelden."); return; }
+  if(!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)){
+    set("Dein Gerät unterstützt (noch) keine Web-Push. Auf dem iPhone: App über „Zum Home-Bildschirm“ installieren (iOS 16.4+) und von dort öffnen."); return; }
+  try{
+    set("Frage nach Erlaubnis …");
+    const perm=await Notification.requestPermission();
+    if(perm!=="granted"){ set("Benachrichtigungen wurden nicht erlaubt. (In den iPhone-Einstellungen kannst du es später erlauben.)"); return; }
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){ sub=await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:urlB64ToUint8(VAPID_PUBLIC) }); }
+    const j=sub.toJSON();
+    const body=JSON.stringify({ user_id:sbUserId, endpoint:sub.endpoint, p256dh:j.keys.p256dh, auth:j.keys.auth, updated_at:new Date().toISOString() });
+    const r=await fetch(SB_URL+"/rest/v1/push_subs?on_conflict=user_id,endpoint",{ method:"POST",
+      headers:{ ...sbHeaders(), Prefer:"resolution=merge-duplicates,return=minimal" }, body });
+    if(r.ok||r.status===201||r.status===204){ set("✅ Push aktiv. Dein Team kann dich jetzt erreichen."); }
+    else { const t=await r.text(); set("Konnte nicht speichern ("+r.status+"). Ist der Server-Teil (SQL) eingerichtet? "+t.slice(0,70)); }
+  }catch(e){ set("Fehler: "+(e&&e.message||e)); }
+}
+(function(){ const b=document.getElementById("pushenable"); if(b) b.onclick=enablePush; })();
+
 /* v53: Sprach-erst Chatleiste — großer Aufnahme-Knopf + Umschalter (Scribe, sonst Browser) */
 (function(){
   const recbtn=document.getElementById("recbtn"), modeswitch=document.getElementById("modeswitch");
@@ -2175,7 +2218,10 @@ wireAuth(); updateAuthUI(); sbRefreshSession();
     // Stream NICHT stoppen -> Mikro bleibt fürs Gespräch offen, iOS fragt nicht bei jedem Klick neu
     const type=(mediaRec&&mediaRec.mimeType)||mime||"audio/webm";
     const blob=new Blob(chunks,{type});
-    if(!blob.size){ busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen"); sysMsg("Mikrofon hat nichts aufgenommen — Zugriff erlaubt und laut genug gesprochen?"); return; }
+    if(!blob.size){ busy=false; recbtn.classList.remove("busy"); setLabel("Sprechen");
+      if(SR){ scribeBroken=true; sysMsg("Nicht angekommen — tipp nochmal auf Sprechen, ich höre jetzt direkt zu."); }
+      else sysMsg("Mikrofon hat nichts aufgenommen — Zugriff erlaubt und laut genug gesprochen?");
+      return; }
     try{
       const fd=new FormData();
       fd.append("file", blob, type.indexOf("mp4")>=0?"audio.mp4":"audio.webm");
