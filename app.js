@@ -1899,7 +1899,7 @@ async function streamClaude(id, history, onDelta){
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":anthKey,
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:640, system:systemPrompt(id), messages:history, stream:true })
+    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:900, system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }], messages:history, stream:true })
   });
   if(!resp.ok){ const t=await resp.text(); throw new Error("HTTP "+resp.status+" "+t.slice(0,140)); }
   if(!resp.body || !resp.body.getReader) throw new Error("no-stream");
@@ -1956,11 +1956,9 @@ function revealSynced(id, clean, token, typ){
   };
   return speak(id, clean, (ms)=>beginReveal(ms)).then(done).catch(done);
 }
-/* v31: 1:1-Antwort holen, dann im Sprechtakt zeigen */
-function streamCoach(id, token){
+/* Klassische (nicht-streamende) Variante — dient als Rückfall */
+function streamCoachClassic(id, token){
   const log=document.getElementById("transcript");
-  if(!isTeam) addOldify();
-  setSpeaker(id);
   const typ=el('<div class="tsys">'+COACHES[id].name+' denkt nach …</div>');
   log.appendChild(typ); log.scrollTop=log.scrollHeight;
   return askClaude(id, convHistory).then(r=>{
@@ -1972,13 +1970,47 @@ function streamCoach(id, token){
     sharedLog.push({ who:id, text:pr.clean });
     return revealSynced(id, pr.clean, token, typ).then(()=>{
       const add=(pr.invites||[]).filter(x=>COACHES[x] && x!==id);
-      if(token===seqToken && add.length){
-        setTimeout(()=>{ if(token===seqToken && liveMode) switchToTeam(add); }, 450);
-      }
+      if(token===seqToken && add.length){ setTimeout(()=>{ if(token===seqToken && liveMode) switchToTeam(add); }, 450); }
     });
+  }).catch(e=>{ try{ typ.remove(); }catch(_){} if(token===seqToken){ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); } });
+}
+/* Streaming: Text erscheint live, während er entsteht — danach Stimme über den sichtbaren Text */
+function streamCoach(id, token){
+  const log=document.getElementById("transcript");
+  if(!isTeam) addOldify();
+  setSpeaker(id);
+  if(voiceOn) return streamCoachClassic(id, token);   // Stimme an → Text erscheint synchron zur Stimme (kein Vorlauf/Delay)
+  // Stimme aus → Text live streamen (spürbar schneller, nichts wartet)
+  const typ=el('<div class="tsys">'+COACHES[id].name+' …</div>');
+  log.appendChild(typ); log.scrollTop=log.scrollHeight;
+  let line=null;
+  const putClean=(clean)=>{
+    if(!line){ try{ typ.remove(); }catch(e){} line=el('<div class="tline"></div>'); log.appendChild(line); setSpeakingUI(true, id); }
+    line.innerHTML=clean.split(" ").map(w=>'<span class="w on">'+esc(w)+'</span>').join(" ");
+    log.scrollTop=log.scrollHeight;
+  };
+  return streamClaude(id, convHistory, (full)=>{
+    if(token!==seqToken) return;
+    const clean=processReply(full).clean;   // Tags (<remember>/<invite>) live ausblenden
+    if(clean) putClean(clean);
+  }).then(async (full)=>{
+    if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
+    const pr=processReply(full); addItems(pr.items);
+    const cleanTxt=(pr.clean||"").replace(/[…\.\s]/g,"");
+    if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(line){ try{ line.remove(); }catch(e){} } setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); return; }
+    putClean(pr.clean);
+    convHistory.push({ role:"assistant", content:pr.clean });
+    sharedLog.push({ who:id, text:pr.clean });
+    if(voiceOn){ try{ await speak(id, pr.clean, ()=>{}); }catch(e){} }   // Stimme über den bereits sichtbaren Text
+    if(token===seqToken) setSpeakingUI(false);
+    const add=(pr.invites||[]).filter(x=>COACHES[x] && x!==id);
+    if(token===seqToken && add.length){ setTimeout(()=>{ if(token===seqToken && liveMode) switchToTeam(add); }, 450); }
   }).catch(e=>{
-    try{ typ.remove(); }catch(_){}
-    if(token===seqToken){ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); }
+    // Streaming nicht möglich/fehlgeschlagen → sauberer Rückfall auf die klassische Variante
+    try{ typ.remove(); }catch(_){} if(line){ try{ line.remove(); }catch(_){} }
+    if(token!==seqToken) return;
+    if(/no-stream|Failed to fetch|network/i.test(String(e&&e.message||e))) return streamCoachClassic(id, token);
+    setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e));
   });
 }
 function showChatbar(){
