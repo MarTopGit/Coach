@@ -1143,13 +1143,22 @@ async function syncMemoryFromDB(){
 /* Konto-gebundene Einstellungen (API-Keys) — in der eigenen, per Login geschützten Supabase-Zeile */
 async function pullSettingsFromDB(){
   if(!sbUser || !sbToken) return;
-  const q="/rest/v1/user_settings?user_id=eq."+sbUserId+"&select=anth_key,el_key";
+  const q="/rest/v1/user_settings?user_id=eq."+sbUserId+"&select=anth_key,el_key,conversations";
   try{
     let r=await fetch(SB_URL+q, { headers:sbHeaders() });
     if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
     if(!r.ok) return; const rows=await r.json(); const s=rows&&rows[0]; if(!s) return;
     if(typeof s.anth_key==="string" && s.anth_key){ anthKey=s.anth_key; store.set("anthKey",anthKey); const i=document.getElementById("anthkeyinput"); if(i) i.value=anthKey; }
     if(typeof s.el_key==="string" && s.el_key){ elKey=s.el_key; store.set("elKey",elKey); elFail=false; const i=document.getElementById("elkeyinput"); if(i) i.value=elKey; }
+    if(s.conversations && typeof s.conversations==="object" && !Array.isArray(s.conversations)){   // v92: Gespräche zurückholen (die vollständigere Seite gewinnt)
+      const db=s.conversations; let changed=false;
+      Object.keys(db).forEach(cid=>{
+        const localArr=Array.isArray(convStore[cid])?convStore[cid]:[];
+        const dbArr=Array.isArray(db[cid])?db[cid]:[];
+        if(dbArr.length>localArr.length){ convStore[cid]=dbArr.slice(-CONV_CAP); changed=true; }
+      });
+      if(changed) saveConvStore();
+    }
     try{ if(typeof syncToggles==="function") syncToggles(); }catch(e){}
   }catch(e){}
 }
@@ -1159,6 +1168,14 @@ async function pushSettingsToDB(){
     await fetch(SB_URL+"/rest/v1/user_settings?on_conflict=user_id", { method:"POST",
       headers:{ ...sbHeaders(), Prefer:"resolution=merge-duplicates,return=minimal" },
       body:JSON.stringify({ user_id:sbUserId, anth_key:anthKey||"", el_key:elKey||"", updated_at:new Date().toISOString() }) });
+  }catch(e){}
+}
+async function pushConvsToDB(){                              // v92: Gespräche ans Konto binden
+  if(!sbUser || !sbToken) return;
+  try{
+    await fetch(SB_URL+"/rest/v1/user_settings?on_conflict=user_id", { method:"POST",
+      headers:{ ...sbHeaders(), Prefer:"resolution=merge-duplicates,return=minimal" },
+      body:JSON.stringify({ user_id:sbUserId, conversations:convStore, updated_at:new Date().toISOString() }) });
   }catch(e){}
 }
 async function pushAllMemoryReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const it of memItems){ it.id=undefined; await dbInsertMemory(it); } }
@@ -1563,6 +1580,23 @@ function cleanupMemory(){
 let logEntries=[];
 try{ logEntries=JSON.parse(store.get("logEntries")||"[]"); if(!Array.isArray(logEntries)) logEntries=[]; }catch(e){ logEntries=[]; }
 function saveLog(){ store.set("logEntries", JSON.stringify(logEntries)); }
+/* v92: Dauerhaftes 1:1-Gesprächs-Gedächtnis pro Coach — das Gespräch geht weiter, wo ihr aufgehört habt */
+let convStore={};
+try{ convStore=JSON.parse(store.get("convStore")||"{}")||{}; if(typeof convStore!=="object"||Array.isArray(convStore)) convStore={}; }catch(e){ convStore={}; }
+const CONV_CAP=48;   // pro Coach die letzten N Nachrichten behalten (ältere sind als Fakten/Logbuch destilliert)
+function saveConvStore(){ try{ store.set("convStore", JSON.stringify(convStore)); }catch(e){} }
+function persistConv(id){
+  if(!id) return;
+  convStore[id]=(convHistory||[]).slice(-CONV_CAP);
+  saveConvStore();
+  schedulePushConvs();   // leiser DB-Sync, damit es auch nach iOS-Speicherleerung / auf anderem Gerät bleibt
+}
+let _convSyncT=null;
+function schedulePushConvs(){
+  if(typeof sbUser==="undefined" || !sbUser || !sbToken) return;
+  clearTimeout(_convSyncT);
+  _convSyncT=setTimeout(()=>{ try{ pushConvsToDB(); }catch(e){} }, 4000);
+}
 function summarizeConversation(coachId, hist){
   if(!anthKey || !COACHES[coachId]) return;
   const convo=(hist||[])
@@ -1773,8 +1807,22 @@ function dateContext(){
   const hh=now.getHours(), mm=now.getMinutes();
   const timeStr=(hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
   const tod = hh<6?"tiefe Nacht":hh<11?"Morgen":hh<14?"Mittag":hh<18?"Nachmittag":hh<22?"Abend":"später Abend";
-  return "Heute ist "+days[now.getDay()]+", der "+now.getDate()+". "+months[now.getMonth()]+" "+now.getFullYear()+" ("+iso+"), und es ist jetzt "+timeStr+" Uhr ("+tod+"). "+
+  const dow=now.getDay();                                  // 0=So … 6=Sa
+  const daysLeft = dow===0 ? 1 : (8 - dow);                // Tage bis So inkl. heute (Mo=7 … Sa=2 … So=1)
+  const lateEve = hh>=20;                                  // ab 20 Uhr ist der Tag praktisch gelaufen
+  let weekPhrase;
+  if(dow===0){                                             // Sonntag
+    weekPhrase = lateEve
+      ? "Es ist Sonntagabend — diese Woche ist so gut wie vorbei. Plane NICHT mehr „diese Woche“, sondern rede von der KOMMENDEN Woche (ab Montag). Heute passt höchstens noch ein ruhiger Ausklang oder ein kurzer Wochenrückblick."
+      : "Es ist Sonntag, der letzte Tag der Woche. Für neue Vorhaben nimm die KOMMENDE Woche (ab Montag) in den Blick, nicht mehr „diese Woche“ — heute ist eher Rückblick/Vorbereitung.";
+  } else if(daysLeft<=2){                                  // Samstag (oder So oben)
+    weekPhrase = "Es ist Wochenende, nur noch "+daysLeft+" Tage in dieser Woche. Größere Vorhaben eher für die KOMMENDE Woche planen, diese Woche nur noch, was realistisch reinpasst.";
+  } else {
+    weekPhrase = "Diese Woche hat noch "+daysLeft+" Tage (bis einschließlich Sonntag). Wenn du „diese Woche“ sagst, meine damit realistisch nur diese "+daysLeft+" verbleibenden Tage.";
+  }
+  return "Heute ist "+days[dow]+", der "+now.getDate()+". "+months[now.getMonth()]+" "+now.getFullYear()+" ("+iso+"), und es ist jetzt "+timeStr+" Uhr ("+tod+"). "+
     "Du KENNST also Datum und Uhrzeit — behaupte nie, du wüsstest die Zeit nicht. Beziehe die Tageszeit natürlich ein: morgens der Start in den Tag, mittags/nachmittags mittendrin, abends eher Rückblick und Ausklang. Frag z. B. abends nicht, was Marco heute noch vorhat, als stünde der Tag am Anfang. "+
+    weekPhrase+" "+
     "Rechne alle Zeitangaben gegen dieses Datum. Ein früher notierter Plan („heute/morgen“ aus einer alten Notiz) kann längst vorbei sein — nimm nicht an, dass er noch bevorsteht. Im Zweifel übers Timing: kurz nachfragen statt erfinden. ";
 }
 function recentContext(id){
@@ -1834,13 +1882,17 @@ function systemPrompt(id){
     rememberInstructions(id);
   p+="Wenn Marco einen anderen Coach dazuholen möchte (z. B. „hol Deniz dazu“, „was sagt Lena dazu?“, „frag mal Elias“), kündige es in einem kurzen Satz an und hänge GANZ am Ende <invite>coachid</invite> an — nur die id. Erlaubte ids: "+ORDER.filter(x=>x!==id).join(", ")+". Tu das nur, wenn Marco es wünscht oder es klar sinnvoll ist. ";
   p+="Eröffne ein Gespräch IMMER menschlich — mit einer echten Begrüßung oder indem du an Marcos Thema bzw. euren letzten Stand anknüpfst. Beginne NIEMALS mit Messwerten, Zahlen oder einem Lagebericht (Recovery, Schlaf, Strain, Trainingszahlen). ";
-  let injData=false;
-  if(id==="deniz"){ const tb=trainingSummary(); if(tb){ p+=tb; injData=true; } }
-  else if(id==="viktor"){ const tb=trainingSummary(); if(tb){ p+=tb; injData=true; } }
-  if(id==="deniz"||id==="elias"||id==="mara"||id==="viktor"){ const wb=whoopSummary(); if(wb){ p+=wb; injData=true; } }
-  if(injData){
-    p+="Behandle diese Trainings- und Whoop-Zahlen als leisen HINTERGRUND-Kontext, niemals als Gesprächsaufhänger. Sprich sie nur an, wenn sie fürs aktuelle Thema wirklich relevant sind oder Marco sie selbst anspricht — für die reine Werte-Schau hat er seine Whoop-App. ";
-    if(id==="viktor") p+="Für dich als Head Coach sind diese Zahlen NUR grober Teil des Gesamtbilds — nutze sie still zum Koordinieren, erwähne sie höchstens ganz beiläufig und niemals als Einstieg. Die Details gehören Deniz. ";
+  // v93: Whoop/Training NICHT mehr dauerhaft in den Prompt legen — die Coaches holen echte Daten bei Bedarf per Werkzeug
+  const tls=toolsFor(id);
+  if(tls && tls.length){
+    const kann=[]; kann.push("dein Gedächtnis über Marco durchsuchen","in eurem Logbuch nachlesen");
+    if(id==="deniz"||id==="viktor") kann.push("seinen echten Trainingsverlauf holen");
+    if(id==="deniz"||id==="viktor"||id==="elias"||id==="mara") kann.push("seine aktuellen Whoop-Werte holen");
+    if(id==="lena") kann.push("deine Ernährungs-Notizen zu ihm lesen");
+    p+="Du hast Werkzeuge, um bei Bedarf echte Daten abzurufen: "+kann.join(", ")+". "+
+       "Nutze sie NUR, wenn du die Info fürs aktuelle Thema wirklich brauchst — rufe nichts unnötig ab und eröffne ein Gespräch nie mit einem Datenabruf. "+
+       "Rate niemals Zahlen oder Fakten: fehlt dir ein Wert, hol ihn per Werkzeug oder sag ehrlich, dass du kurz nachsiehst bzw. frag Marco. Für die reine Werte-Schau hat er seine Whoop-App — bring Zahlen nur ein, wenn sie fürs Thema zählen. ";
+    if(id==="viktor") p+="Als Head Coach nutzt du diese Daten still zum Koordinieren des Gesamtbilds, nie als Einstieg; die Trainingsdetails gehören Deniz. ";
   }
   if(id==="viktor") p+="Als Head Coach & Mentor: warm und klar auf Marcos Seite, aber direkt und ehrlich — keine Weichspülerei. Etwas trockener Humor und Energie sind ausdrücklich erwünscht, sei nie eine Schlaftablette. Du trittst sehr selbstbewusst und souverän auf. Bring ruhig deine eigene Meinung und deine Erfahrung ein, wenn du eine klare Haltung hast. Stärke Marcos Selbstvertrauen aktiv: benenne seine Stärken und Erfolge, sag ihm ehrlich, wenn er etwas richtig gut macht und was für ein fähiger, guter Typ er ist, und pushe ihn, an sich zu glauben — echt und begründet, nie hohle Schmeichelei. Du dirigierst das Team: verbinde Marcos Lebensbereiche, priorisiere mit ihm das eine Wichtigste. Und hol von dir aus den passenden Spezialisten dazu (kündige es kurz an und hänge <invite>coachid</invite> ans Ende), sobald ein Thema klar in dessen Fach gehört — du wartest NICHT auf Marcos Aufforderung. ";
   if(id==="viktor") p+="Du bist zugleich Marcos persönlicher Life-Coach: du begleitest sein Leben als Ganzes — Fokus, Balance über alle Bereiche (Training, Beruf, Familie, Kopf), Werte und was ihm wirklich wichtig ist. Führe ein lockeres, fast tägliches Einchecken aus dem Gespräch heraus: frag beiläufig, was heute ansteht und wie es ihm geht — kein Formular, echtes Gespräch. Arbeite mit echten Reflexionsfragen statt fertiger Ratschläge. Wenn es passt (Wochenende oder auf Wunsch), biete einen kurzen Rückblick an: erkenne Muster, würdige Fortschritt, setzt mit ihm einen Fokus fürs Nächste. Was Marco über seinen Tag, seine Pläne oder seine Stimmung erzählt, hältst du als milestone mit date fest, damit ihr später gemeinsam zurückblicken könnt. ";
@@ -1853,6 +1905,83 @@ function systemPrompt(id){
   if(id==="lena") p+="Als Ernährungs-Coach: strukturierte Expertin mit klarem Plan. Deine Empfehlungen sind wissenschaftlich fundiert (Proteinzufuhr/-timing, Sättigung, Energiebilanz, Mahlzeitenstruktur) und trotzdem alltagstauglich und lecker — du kommst aus der Küche und weißt, dass Essen schmecken muss. Gib konkrete, umsetzbare Schritte und einen roten Faden statt loser Tipps, aber kein Dogma, kein erhobener Zeigefinger. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
+}
+
+/* ===== v93: Werkzeuge — Coaches holen echte Daten NUR bei Bedarf (statt alles im Prompt zu tragen) ===== */
+const TOOL_DEFS={
+  gedaechtnis_suchen:{
+    name:"gedaechtnis_suchen",
+    description:"Durchsuche dein Gedächtnis über Marco (dauerhafte Fakten, aktueller Stand, Verlauf/Meilensteine) nach einem Stichwort oder Thema. Nutze das, wenn du Details brauchst, die gerade nicht im Gespräch stehen.",
+    input_schema:{ type:"object", properties:{ thema:{ type:"string", description:"Worum geht es? Stichworte, z. B. 'Schulter Verletzung' oder 'Ernährung Ziele'." } }, required:["thema"] }
+  },
+  logbuch_lesen:{
+    name:"logbuch_lesen",
+    description:"Lies die letzten Gesprächs-Zusammenfassungen aus Marcos Logbuch — worüber ihr zuletzt gesprochen habt und welche nächsten Schritte offen sind.",
+    input_schema:{ type:"object", properties:{ anzahl:{ type:"integer", description:"Wie viele Einträge (1-10). Standard 6." } } }
+  },
+  whoop_abrufen:{
+    name:"whoop_abrufen",
+    description:"Hol Marcos aktuelle Whoop-Werte (Recovery, Schlaf, HRV, Ruhepuls, Strain) der letzten Tage. Nur abrufen, wenn es fürs Thema wirklich relevant ist.",
+    input_schema:{ type:"object", properties:{ tage:{ type:"integer", description:"Wie viele Tage zurück (1-14). Standard 3." } } }
+  },
+  training_verlauf:{
+    name:"training_verlauf",
+    description:"Hol Marcos letzte Trainingseinheiten aus der Gym-App (Datum, Zusammenfassung, aktuelle Bestwerte, Einheiten diese Woche).",
+    input_schema:{ type:"object", properties:{ anzahl:{ type:"integer", description:"Wie viele Einheiten (1-10). Standard 5." } } }
+  },
+  ernaehrung_notizen:{
+    name:"ernaehrung_notizen",
+    description:"Hol, was du (Lena) über Marcos Ernährung notiert hast — Mahlzeiten und Muster über die Zeit.",
+    input_schema:{ type:"object", properties:{} }
+  }
+};
+function toolsFor(id){
+  const t=[TOOL_DEFS.gedaechtnis_suchen, TOOL_DEFS.logbuch_lesen];
+  if(id==="deniz"||id==="viktor") t.push(TOOL_DEFS.training_verlauf);
+  if(id==="deniz"||id==="viktor"||id==="elias"||id==="mara") t.push(TOOL_DEFS.whoop_abrufen);
+  if(id==="lena") t.push(TOOL_DEFS.ernaehrung_notizen);
+  return t;
+}
+function runTool(id, name, input){
+  input=input||{};
+  try{
+    if(name==="gedaechtnis_suchen"){
+      const q=String(input.thema||"");
+      const scored=(memItems||[]).map(it=>({it, sc:relScore((it.text||"")+" "+(it.key||""), q)}))
+        .filter(x=>x.sc>0).sort((a,b)=>b.sc-a.sc).slice(0,10).map(x=>x.it);
+      const pool=scored.length?scored:(memItems||[]).slice(-8);
+      if(!pool.length) return "Noch nichts gemerkt zu diesem Thema.";
+      return pool.map(f=>"- "+(f.date?f.date+": ":"")+(f.key?f.key+": ":"")+f.text+" ["+f.kind+"]").join("\n");
+    }
+    if(name==="logbuch_lesen"){
+      const n=Math.max(1,Math.min(10, input.anzahl||6));
+      const mine=(id==="viktor")?logEntries:(logEntries||[]).filter(e=>e.coach===id||e.coach==="viktor");
+      const list=(mine||[]).slice(0,n);
+      if(!list.length) return "Noch keine Logbuch-Einträge.";
+      return list.map(e=>"- "+(e.d?String(e.d).slice(0,10)+": ":"")+e.t).join("\n");
+    }
+    if(name==="whoop_abrufen"){
+      if(!whoopData||!whoopData.length) return "Keine Whoop-Daten verbunden.";
+      const n=Math.max(1,Math.min(14, input.tage||3));
+      return whoopData.slice(0,n).map(d=>{
+        const p=[]; if(d.recovery!=null)p.push("Recovery "+d.recovery+"%"); if(d.sleep_hours!=null)p.push("Schlaf "+String(d.sleep_hours).replace(".",",")+"h"+(d.sleep_perf!=null?" ("+d.sleep_perf+"%)":"")); if(d.hrv!=null)p.push("HRV "+d.hrv+"ms"); if(d.rhr!=null)p.push("Ruhepuls "+d.rhr); if(d.strain!=null)p.push("Strain "+String(d.strain).replace(".",","));
+        return "- "+d.day+": "+p.join(", ");
+      }).join("\n");
+    }
+    if(name==="training_verlauf"){
+      const base=trainingSummary();
+      if(!base) return "Keine Trainingsdaten verbunden.";
+      const n=Math.max(1,Math.min(10, input.anzahl||5));
+      const recent=(workoutData||[]).slice(0,n).map(w=>"- "+w.workout_date+": "+(w.summary||w.type||"Training")).join("\n");
+      return base+(recent?("\nLetzte Einheiten:\n"+recent):"");
+    }
+    if(name==="ernaehrung_notizen"){
+      const food=(memItems||[]).filter(it=>it.coach==="lena");
+      if(!food.length) return "Noch keine Ernährungs-Notizen.";
+      return food.slice(-12).map(f=>"- "+(f.date?f.date+": ":"")+f.text).join("\n");
+    }
+  }catch(e){ return "Konnte das gerade nicht abrufen."; }
+  return "Unbekanntes Werkzeug.";
 }
 
 let convHistory=[], liveCoachId=null, liveMode=false, sharedLog=[], liveTeam=false, liveParticipants=[];
@@ -1952,18 +2081,23 @@ function visiblePart(raw){
   vis = vis.replace(/<\s*\/?\s*r(e(m(e(m(b(e(r)?)?)?)?)?)?)?\s*$/i,""); // angefangenes Tag am Ende zurückhalten
   return vis;
 }
-/* v30: Streaming über die Anthropic-API (SSE) */
+/* v30/v93: Streaming über die Anthropic-API (SSE) — streamt Text live UND erkennt Werkzeug-Aufrufe */
 async function streamClaude(id, history, onDelta){
+  const body={ model:"claude-sonnet-5", max_tokens:900,
+    system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }],
+    messages:history, stream:true };
+  const tls=toolsFor(id); if(tls && tls.length) body.tools=tls;
   const resp=await fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":anthKey,
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:900, system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }], messages:history, stream:true })
+    body:JSON.stringify(body)
   });
   if(!resp.ok){ const t=await resp.text(); throw new Error("HTTP "+resp.status+" "+t.slice(0,140)); }
   if(!resp.body || !resp.body.getReader) throw new Error("no-stream");
   const reader=resp.body.getReader(), dec=new TextDecoder();
-  let buf="", full="";
+  let buf="", full="", completed=false, stopReason=null;
+  const blocks={};   // index -> { type, text, name, id, jsonBuf }
   while(true){
     const { done, value }=await reader.read();
     if(done) break;
@@ -1975,13 +2109,88 @@ async function streamClaude(id, history, onDelta){
       const data=line.slice(5).trim();
       if(!data || data==="[DONE]") continue;
       try{ const ev=JSON.parse(data);
-        if(ev.type==="content_block_delta" && ev.delta && (ev.delta.type==="text_delta") && ev.delta.text){
-          full+=ev.delta.text; if(onDelta) onDelta(full);
+        if(ev.type==="content_block_start" && ev.content_block){
+          const cb=ev.content_block;
+          blocks[ev.index]={ type:cb.type, text:"", name:cb.name, id:cb.id, jsonBuf:"" };
         }
+        else if(ev.type==="content_block_delta" && ev.delta){
+          const b=blocks[ev.index]||(blocks[ev.index]={ type:"text", text:"", jsonBuf:"" });
+          if(ev.delta.type==="text_delta" && ev.delta.text){ b.text+=ev.delta.text; full+=ev.delta.text; if(onDelta) onDelta(full); }
+          else if(ev.delta.type==="input_json_delta" && ev.delta.partial_json!=null){ b.jsonBuf+=ev.delta.partial_json; }
+        }
+        else if(ev.type==="content_block_stop"){
+          const b=blocks[ev.index];
+          if(b && b.type==="tool_use"){ try{ b.input=JSON.parse(b.jsonBuf||"{}"); }catch(e){ b.input={}; } }
+        }
+        else if(ev.type==="message_delta" && ev.delta && ev.delta.stop_reason){ completed=true; stopReason=ev.delta.stop_reason; }
+        else if(ev.type==="message_stop"){ completed=true; }
       }catch(e){}
     }
   }
-  return full;
+  if(!completed) throw new Error("stream-incomplete");   // abgerissen → oben wird die Antwort komplett nachgeholt
+  const ordered=Object.keys(blocks).map(Number).sort((a,b)=>a-b).map(i=>blocks[i]);
+  const rawContent=ordered.map(b=> b.type==="tool_use"
+    ? { type:"tool_use", id:b.id, name:b.name, input:b.input||{} }
+    : { type:"text", text:b.text||"" }).filter(b=> b.type==="tool_use" || (b.text&&b.text.length));
+  const toolUses=ordered.filter(b=>b.type==="tool_use").map(b=>({ id:b.id, name:b.name, input:b.input||{} }));
+  return { text:full, toolUses, rawContent, stopReason };
+}
+/* v93: nicht-streamende Werkzeug-Schleife (Rückfall für Umgebungen ohne Stream, z. B. iOS-Sonderfälle/Tests) */
+async function claudeToolsCall(id, history){
+  const body={ model:"claude-sonnet-5", max_tokens:900,
+    system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }],
+    messages:history };
+  const tls=toolsFor(id); if(tls && tls.length) body.tools=tls;
+  const r=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{ "content-type":"application/json", "x-api-key":anthKey,
+      "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
+    body:JSON.stringify(body)
+  });
+  if(!r.ok){ const t=await r.text(); throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }
+  return await r.json();
+}
+async function askClaudeTools(id, history){
+  let work=history.slice(), iter=0, text="";
+  while(iter++<6){
+    const data=await claudeToolsCall(id, work);
+    const bl=(data&&data.content)||[];
+    const txt=bl.filter(b=>b.type==="text").map(b=>b.text).join("");
+    const toolUses=bl.filter(b=>b.type==="tool_use");
+    if(data.stop_reason==="tool_use" && toolUses.length){
+      work.push({ role:"assistant", content:bl });
+      work.push({ role:"user", content:toolUses.map(tu=>({ type:"tool_result", tool_use_id:tu.id, content:String(runTool(id, tu.name, tu.input)) })) });
+      if(txt) text+=txt+" ";
+      continue;
+    }
+    return text+txt;
+  }
+  return text;
+}
+/* v93: gemeinsame Antwort-Engine — streamt live, führt Werkzeuge aus, holt bei Abriss komplett nach */
+async function generateReply(id, token, onText, onTool){
+  let work=convHistory.slice(), iter=0, shown="", retried=0;
+  while(iter++<6){
+    let res;
+    try{
+      res=await streamClaude(id, work, onText?(t)=>onText(shown+t):null);
+    }catch(e){
+      const m=String(e&&e.message||e);
+      if(/no-stream/.test(m)){ if(onTool){ try{ onTool(); }catch(_){} onTool=null; } const full=await askClaudeTools(id, work); return shown+full; }   // kein Stream → nicht-streamend
+      if(/stream-incomplete/.test(m) && retried++<2){ iter--; continue; }                          // kurz nochmal
+      throw e;
+    }
+    if(token!==seqToken) return null;
+    if(res.stopReason==="tool_use" && res.toolUses.length){
+      if(onTool){ try{ onTool(); }catch(_){} onTool=null; }   // dezenter „schaut nach"-Hinweis, nur einmal
+      work.push({ role:"assistant", content:res.rawContent });
+      if(res.text) shown+=res.text+" ";
+      work.push({ role:"user", content:res.toolUses.map(tu=>({ type:"tool_result", tool_use_id:tu.id, content:String(runTool(id, tu.name, tu.input)) })) });
+      continue;
+    }
+    return shown+(res.text||"");
+  }
+  return shown;
 }
 /* v31: Text im Sprechtakt enthüllen — Wörter erscheinen synchron zur Stimme, nicht davor */
 function revealSynced(id, clean, token, typ){
@@ -2015,31 +2224,32 @@ function revealSynced(id, clean, token, typ){
   };
   return speak(id, clean, (ms)=>beginReveal(ms)).then(done).catch(done);
 }
-/* Klassische (nicht-streamende) Variante — dient als Rückfall */
+/* Stimme-an / Rückfall: erst die volle Antwort (mit Werkzeugen), dann Text im Sprechtakt enthüllen */
 function streamCoachClassic(id, token){
   const log=document.getElementById("transcript");
   const typ=el('<div class="tsys">'+COACHES[id].name+' denkt nach …</div>');
   log.appendChild(typ); log.scrollTop=log.scrollHeight;
-  return askClaude(id, convHistory).then(r=>{
-    if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
-    const pr=processReply(r); addItems(pr.items);
+  const onTool=()=>{ try{ typ.textContent=COACHES[id].name+" schaut kurz nach …"; }catch(e){} };
+  return generateReply(id, token, null, onTool).then(full=>{
+    if(full===null || token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
+    const pr=processReply(full); addItems(pr.items);
     const cleanTxt=(pr.clean||"").replace(/[…\.\s]/g,"");
     if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(token===seqToken){ setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); } return; }
     convHistory.push({ role:"assistant", content:pr.clean });
     sharedLog.push({ who:id, text:pr.clean });
+    persistConv(id);                                        // v92: Gespräch dauerhaft sichern
     return revealSynced(id, pr.clean, token, typ).then(()=>{
       const add=(pr.invites||[]).filter(x=>COACHES[x] && x!==id);
       if(token===seqToken && add.length){ setTimeout(()=>{ if(token===seqToken && liveMode) switchToTeam(add); }, 450); }
     });
   }).catch(e=>{ try{ typ.remove(); }catch(_){} if(token===seqToken){ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); } });
 }
-/* Streaming: Text erscheint live, während er entsteht — danach Stimme über den sichtbaren Text */
+/* Stimme aus: Text erscheint live, während er entsteht (Werkzeuge inklusive) */
 function streamCoach(id, token){
   const log=document.getElementById("transcript");
   if(!isTeam) addOldify();
   setSpeaker(id);
   if(voiceOn) return streamCoachClassic(id, token);   // Stimme an → Text erscheint synchron zur Stimme (kein Vorlauf/Delay)
-  // Stimme aus → Text live streamen (spürbar schneller, nichts wartet)
   const typ=el('<div class="tsys">'+COACHES[id].name+' …</div>');
   log.appendChild(typ); log.scrollTop=log.scrollHeight;
   let line=null;
@@ -2048,27 +2258,26 @@ function streamCoach(id, token){
     line.innerHTML=clean.split(" ").map(w=>'<span class="w on">'+esc(w)+'</span>').join(" ");
     log.scrollTop=log.scrollHeight;
   };
-  return streamClaude(id, convHistory, (full)=>{
+  const onTool=()=>{ try{ if(!line) typ.textContent=COACHES[id].name+" schaut kurz nach …"; }catch(e){} };
+  return generateReply(id, token, (full)=>{
     if(token!==seqToken) return;
     const clean=processReply(full).clean;   // Tags (<remember>/<invite>) live ausblenden
     if(clean) putClean(clean);
-  }).then(async (full)=>{
-    if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
+  }, onTool).then(full=>{
+    if(full===null || token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
     const pr=processReply(full); addItems(pr.items);
     const cleanTxt=(pr.clean||"").replace(/[…\.\s]/g,"");
     if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(line){ try{ line.remove(); }catch(e){} } setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); return; }
     putClean(pr.clean);
     convHistory.push({ role:"assistant", content:pr.clean });
     sharedLog.push({ who:id, text:pr.clean });
-    if(voiceOn){ try{ await speak(id, pr.clean, ()=>{}); }catch(e){} }   // Stimme über den bereits sichtbaren Text
+    persistConv(id);                                        // v92: Gespräch dauerhaft sichern
     if(token===seqToken) setSpeakingUI(false);
     const add=(pr.invites||[]).filter(x=>COACHES[x] && x!==id);
     if(token===seqToken && add.length){ setTimeout(()=>{ if(token===seqToken && liveMode) switchToTeam(add); }, 450); }
   }).catch(e=>{
-    // Streaming nicht möglich/fehlgeschlagen → sauberer Rückfall auf die klassische Variante
     try{ typ.remove(); }catch(_){} if(line){ try{ line.remove(); }catch(_){} }
     if(token!==seqToken) return;
-    if(/no-stream|Failed to fetch|network/i.test(String(e&&e.message||e))) return streamCoachClassic(id, token);
     setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e));
   });
 }
@@ -2083,8 +2292,22 @@ function coachThinking(){
 }
 const VIKTOR_CHECKIN="(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn warm und persönlich und frag ihn offen, was heute ansteht oder wie es ihm geht — genau EINE Frage. Beginne AUF KEINEN FALL mit Messwerten, Recovery, Schlaf, Strain oder Zahlen; die sind nur dein stiller Hintergrund fürs Gesamtbild. Kurz: ein bis zwei Sätze plus die Frage.)";
 function enterLive(id, openingNote){
-  liveCoachId=id; convHistory=[]; sharedLog=[]; lastUserText="";
+  liveCoachId=id; sharedLog=[]; lastUserText="";
+  convHistory=(convStore[id]||[]).slice();                  // v92: fortlaufendes Gespräch statt bei null anzufangen
   document.getElementById("chips").innerHTML="";
+  // Bisheriges Gespräch sichtbar wieder aufbauen — es fühlt sich an wie ein durchgehender Faden
+  const log=document.getElementById("transcript");
+  let shown=0;
+  if(log && convHistory.length){
+    convHistory.forEach(m=>{
+      if(m.role==="user"){ if(/Interner Hinweis/.test(m.content||"")) return; addMsg("me", m.content); shown++; }
+      else if(m.role==="assistant" && m.content){ addMsg(id, m.content); shown++; }
+    });
+  }
+  if(shown){
+    addOldify();                                            // frühere Zeilen ruhig stellen, neue heben sich ab
+    document.getElementById("call").classList.add("chatting");   // direkt in den kompakten Chat-Modus
+  }
   showChatbar();
   if(openingNote){                                          // proaktive Anfrage oder Check-in: der Coach ergreift das Wort
     convHistory.push({ role:"user", content:openingNote });
@@ -2106,6 +2329,7 @@ function sendChat(){
   log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
   convHistory.push({ role:"user", content:txt });
   sharedLog.push({ who:"marco", text:txt });
+  persistConv(liveCoachId);                                 // v92: deine Nachricht ist sofort gesichert
   lastUserText=txt;
   streamCoach(liveCoachId, ++seqToken);
 }
