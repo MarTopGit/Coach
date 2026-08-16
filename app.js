@@ -340,6 +340,8 @@ let _px=0,_py=0,_tx=0,_ty=0,_paraOn=false;
 function startParallax(){
   if(_paraOn) return; _paraOn=true;
   const loop=()=>{
+    requestAnimationFrame(loop);
+    if(document.hidden || (typeof overlayShown==="function" && overlayShown())) return;   // verdeckt → keine Parallax-Updates
     _px+=(_tx-_px)*.07; _py+=(_ty-_py)*.07;
     const ow=document.getElementById("orbitwrap");
     const sy=window.scrollY||0;
@@ -349,7 +351,6 @@ function startParallax(){
       ow.style.opacity=op.toFixed(2); }
     const bg=document.getElementById("bg-aura");
     if(bg) bg.style.transform="translate("+(-_px*.55).toFixed(2)+"px,"+(-_py*.55).toFixed(2)+"px)";
-    requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
   window.addEventListener("mousemove",e=>{
@@ -403,20 +404,25 @@ function initGL(){
   const loc=gl.getAttribLocation(pr,"a"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
   const uT=gl.getUniformLocation(pr,"t"),uR=gl.getUniformLocation(pr,"r"),uA=gl.getUniformLocation(pr,"A"),
         uB=gl.getUniformLocation(pr,"B"),uD=gl.getUniformLocation(pr,"d"),uP=gl.getUniformLocation(pr,"p");
-  function rs(){ const sc=Math.min(window.devicePixelRatio||1,2)*.5;
+  function rs(){ const sc=Math.min(window.devicePixelRatio||1,2)*.4;   // etwas geringere Auflösung → günstiger auf dem Handy
     cv.width=Math.max(2,innerWidth*sc); cv.height=Math.max(2,innerHeight*sc);
     gl.viewport(0,0,cv.width,cv.height); }
   rs(); window.addEventListener("resize",rs);
-  const st=performance.now();
-  (function draw(){
+  const st=performance.now(); let _glLast=0;
+  const overlayOpen=()=>{ const c=document.getElementById("call"), v=document.getElementById("vita");
+    return (c&&c.classList.contains("open")) || (v&&v.classList.contains("open")); };
+  (function draw(now){
+    requestAnimationFrame(draw);
+    if(document.hidden || overlayOpen()) return;        // verdeckt/inaktiv → nicht rechnen
+    if(now-_glLast < 40) return;                         // ~25 fps genügen für sanften Nebel
+    _glLast=now;
     const m=window.__mood||{c1:[.55,.5,.94],c2:[.25,.84,.68],dim:1};
     gl.uniform1f(uT,(performance.now()-st)/1000);
     gl.uniform2f(uR,cv.width,cv.height);
     gl.uniform3fv(uA,m.c1); gl.uniform3fv(uB,m.c2); gl.uniform1f(uD,m.dim);
     gl.uniform2f(uP,_px*.02,_py*.02);
     gl.drawArrays(gl.TRIANGLES,0,3);
-    requestAnimationFrame(draw);
-  })();
+  })(performance.now());
   const aura=document.getElementById("bg-aura"); if(aura) aura.style.display="none";
 }
 applyMood(); startParallax(); initGL(); loadAvatars();
@@ -786,7 +792,10 @@ function viktorBriefing(){
   if(typeof memItems!=="undefined" && memItems.length) return "Ich hab dein Team im Blick. <b>Womit starten wir heute?</b>";
   return "Dein Team ist startklar — <b>ich koordiniere</b>. Erzähl mir, worum es heute geht.";
 }
+function overlayShown(){ const c=document.getElementById("call"), v=document.getElementById("vita");
+  return (c&&c.classList.contains("open")) || (v&&v.classList.contains("open")); }
 function orbitLoop(nowT){
+  if(document.hidden || overlayShown()){ requestAnimationFrame(orbitLoop); return; }   // verdeckt → keine Orbit-Berechnung
   const t=nowT-orbitT0;
   mouseSpin+=(mouseSpinT-mouseSpin)*0.06;
   let bestZ=-2, bestId="", allIn=true, minPe=1; const pts=[];
@@ -1696,6 +1705,10 @@ function buildRequests(){
   const w=(typeof whoopData!=="undefined"&&whoopData&&whoopData.length)?whoopData[0]:null;
   const gap=(id,key)=>{ try{ const st=dossierStatus(id); const s=st.find(x=>x.key===key); return !!(s&&!s.filled); }catch(e){ return false; } };
   const day=Math.floor(Date.now()/864e5);
+  // Autonome Team-Absprache: Viktor bringt am Sonntag die gebündelte Sicht des Teams
+  if(new Date().getDay()===0)
+    out.push({coach:"viktor",key:"team_huddle_"+weekStamp(),pri:1,text:"Das Team hat über deine Woche geschaut.",
+      reason:"Du hast dich als Head Coach im Hintergrund mit dem ganzen Team (Deniz, Lena, Peter, Elias, Mara) über Marcos letzte Woche beraten. Präsentiere jetzt in ihrem Namen die gebündelte Sicht des Teams: zwei bis drei konkrete Beobachtungen aus verschiedenen Lebensbereichen (Training, Ernährung, Beruf, Kopf, Balance) auf Basis dessen, was ihr über ihn wisst und der letzten Gespräche/Daten, plus ein klarer Fokus für die neue Woche. Sprich fürs Team, warm und konkret, erfinde nichts, und stelle zum Schluss genau EINE Frage."});
   // 1) Kern: Ziele & Kennenlernen (Dossier-Lücken) — das eigentliche Coach-Verhalten
   const gapReqs=[
     {coach:"viktor",cond:gap("viktor","hauptziele"),key:"viktor_ziele",text:"Lass uns deine wichtigsten Ziele schärfen.",reason:"Du willst Marcos wichtigste Ziele verstehen, um das Team darauf auszurichten — und ihn dabei in seinem Selbstvertrauen stärken."},
@@ -1750,6 +1763,7 @@ function renderRequests(){
     const x=card.querySelector(".rqx"); if(x) x.onclick=(e)=>{ e.stopPropagation(); dismissRequest(r.key); };
   });
 }
+const COACHING_METHOD="Coache mit echter Methode (im Rahmen deiner Persönlichkeit), nicht bloß als Ratgeber: Stelle zuerst kraftvolle, offene Fragen, um Marcos Situation, sein Ziel und sein Warum zu verstehen, bevor du Lösungen anbietest — meist bringt die richtige Frage mehr als ein schneller Rat. Hilf ihm, Ziele in kleine, konkrete nächste Schritte zu zerlegen, und vereinbare Verbindlichkeit (was genau, bis wann). Spiegle zurück, was du hörst, fasse kurz zusammen und bestärke Fortschritt. Gib Ratschläge dosiert und nur, wenn sie wirklich helfen. Bleib dabei kurz und im echten Gespräch — nie belehrend. ";
 const MANTRA="Marcos Leitmantra, das ihr alle im Team teilt: „Der Weg ist das Ziel.“ Er will Ziele haben und an ihnen arbeiten — aber sein Glück NICHT aufschieben, bis sie erreicht sind. Er will heute und jetzt glücklich sein, den Moment genießen und Freude an der Sache selbst finden. Hilf ihm, dranzubleiben UND den Weg zu genießen: feiere den Prozess und kleine Momente, nicht nur Ergebnisse, und lass ihn sich nie in reiner Zieljagd verlieren. ";
 function dateContext(){
   const now=new Date();
@@ -1780,7 +1794,14 @@ function memoryBlock(coachId){
   let s="Das weißt du über Marco (nutze nur das hier, erfinde nichts dazu):\n";
   if(facts.length) s+="Dauerhaft:\n"+facts.map(f=>"- "+f.text).join("\n")+"\n";
   if(states.length) s+="Aktueller Stand:\n"+states.map(f=>"- "+(f.key?f.key+": ":"")+f.text).join("\n")+"\n";
-  if(miles.length) s+="Verlauf (Entwicklung über Zeit):\n"+miles.slice(-12).map(f=>"- "+(f.date?f.date+": ":"")+f.text).join("\n")+"\n";
+  if(miles.length){
+    // Retrieval: zum aktuellen Thema passende Verlaufs-Einträge bevorzugen, sonst die jüngsten
+    let ms;
+    if(lastUserText){ ms=miles.map(f=>({f,sc:relScore(f.text,lastUserText)})).sort((a,b)=>b.sc-a.sc).slice(0,14).map(x=>x.f)
+        .sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))); }
+    else ms=miles.slice(-12);
+    s+="Verlauf (Entwicklung über Zeit; die gerade relevantesten zuerst herausgesucht):\n"+ms.map(f=>"- "+(f.date?f.date+": ":"")+f.text).join("\n")+"\n";
+  }
   s+="Beziehe dich natürlich darauf und lerne behutsam mehr — du lernst Marco nie fertig kennen, eure Beziehung wird mit der Zeit vertrauter und persönlicher. "+
      "WICHTIG: Nutze all das als stillen HINTERGRUND, nicht als Gesprächsaufhänger. Einzelne Fakten — besonders die gesundheitliche Vorgeschichte wie Operationen — bringst du nur ein, wenn sie zum aktuellen Thema wirklich passen. Dräng sie nicht in jedes Gespräch. ";
   return s;
@@ -1804,6 +1825,7 @@ function systemPrompt(id){
     "Du hast dein eigenes, eigenständiges Leben — spiegle NIEMALS Marcos Eigenschaften, Herkunft oder Erfahrungen und erfinde keine künstlichen Gemeinsamkeiten, nur um nah zu wirken. Bring stattdessen aus deiner eigenen Geschichte gern etwas ein, das ihn inspiriert. "; }
   p+="Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
+    COACHING_METHOD+
     MANTRA+
     dateContext()+
     memoryBlock(id)+
@@ -1834,6 +1856,14 @@ function systemPrompt(id){
 }
 
 let convHistory=[], liveCoachId=null, liveMode=false, sharedLog=[], liveTeam=false, liveParticipants=[];
+let lastUserText="";   // für gezielte Gedächtnis-Auswahl (Retrieval)
+function relScore(text, query){
+  if(!query) return 0;
+  const stop=new Set(["und","der","die","das","ich","du","ist","mit","für","auf","den","dem","eine","nicht","auch","was","wie","mir","mich","dir","dich","habe","bin","war","mal","noch","schon","aber","oder","wenn","dann","sein","hast","hab","dass","eben","gerade","heute"]);
+  const q=new Set((String(query).toLowerCase().match(/[a-zäöüß]{4,}/g)||[]).filter(w=>!stop.has(w)));
+  if(!q.size) return 0;
+  let s=0; for(const w of (String(text).toLowerCase().match(/[a-zäöüß]{4,}/g)||[])){ if(q.has(w)) s++; } return s;
+}
 function transcriptText(){
   return sharedLog.map(m=>(m.who==="marco"?"Marco":(COACHES[m.who]?COACHES[m.who].name:m.who))+": "+m.text).join("\n");
 }
@@ -1877,7 +1907,7 @@ function teamRespond(extraNote){
   const wantsWhoop=parts.some(x=>["deniz","elias","mara","viktor"].includes(x));
   const sys="Du inszenierst eine laufende, lockere Teambesprechung von Marcos Coaching-Team. Teilnehmer: "+roster+". "+
     "Reagiere auf Marcos letzte Nachricht: es antworten so viele Coaches, wie sinnvoll ist — bei allgemeinen Fragen (z. B. „wie geht es euch?“) gerne alle Teilnehmer kurz, sonst die ein bis drei wirklich Relevanten. Jeder Beitrag 1 bis 3 Sätze, in seinem Charakter. Sie hören einander zu, geben sich auch recht, bauen aufeinander auf — kein Streit. Deutsch, per Du, gesprochen. "+
-    MANTRA+dateContext()+memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
+    COACHING_METHOD+MANTRA+dateContext()+memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
     "Erfinde keine Daten über Marco. Antworte AUSSCHLIESSLICH als reines JSON-Array, Format [{\"coach\":\"<id>\",\"text\":\"...\"}], erlaubte ids: "+parts.join(", ")+".";
   const user="Bisheriger Gesprächsverlauf:\n"+transcriptText()+(extraNote?("\n\n"+extraNote):"");
   const tk=++seqToken;
@@ -1894,6 +1924,7 @@ function sendTeamChat(txt){
   const log=document.getElementById("transcript"); if(!log) return;
   log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
   sharedLog.push({ who:"marco", text:txt });
+  lastUserText=txt;
   teamRespond();
 }
 function anthErr(e){
@@ -2052,7 +2083,7 @@ function coachThinking(){
 }
 const VIKTOR_CHECKIN="(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn warm und persönlich und frag ihn offen, was heute ansteht oder wie es ihm geht — genau EINE Frage. Beginne AUF KEINEN FALL mit Messwerten, Recovery, Schlaf, Strain oder Zahlen; die sind nur dein stiller Hintergrund fürs Gesamtbild. Kurz: ein bis zwei Sätze plus die Frage.)";
 function enterLive(id, openingNote){
-  liveCoachId=id; convHistory=[]; sharedLog=[];
+  liveCoachId=id; convHistory=[]; sharedLog=[]; lastUserText="";
   document.getElementById("chips").innerHTML="";
   showChatbar();
   if(openingNote){                                          // proaktive Anfrage oder Check-in: der Coach ergreift das Wort
@@ -2075,6 +2106,7 @@ function sendChat(){
   log.appendChild(el('<div class="tme">'+esc(txt)+'</div>')); log.scrollTop=log.scrollHeight;
   convHistory.push({ role:"user", content:txt });
   sharedLog.push({ who:"marco", text:txt });
+  lastUserText=txt;
   streamCoach(liveCoachId, ++seqToken);
 }
 
