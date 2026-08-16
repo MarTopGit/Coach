@@ -761,8 +761,8 @@ function renderViktorHero(){
   o.setAttribute("style", orbStyle("viktor"));
   o.classList.add("orb"); o.classList.toggle("hasimg", !!AVOK.viktor);
   o.innerHTML=avatarInner("viktor")+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES.viktor.hex+'55"></span>';
-  o.onclick=()=>openCall("viktor");                                   // Hero ist nicht drehbar → direkt öffnen (keine Drag-Sperre)
-  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>openCall("viktor");
+  o.onclick=()=>openCall("viktor");                                   // Hero antippen → Viktor wartet, du führst
+  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>openCall("viktor", VIKTOR_CHECKIN);  // Check-in-Button → Viktor startet
 }
 function coachHasNote(id){
   const w=(typeof whoopData!=="undefined"&&whoopData&&whoopData.length)?whoopData[0]:null;
@@ -796,7 +796,7 @@ function orbitLoop(nowT){
     o.style.left=(x-32).toFixed(1)+"px";
     o.style.top=(y-32).toFixed(1)+"px";
     o.style.transform="scale("+sc.toFixed(3)+")";
-    o.style.opacity=(pe<=0?0:(.45+.55*f)*Math.min(1,pe*1.6)).toFixed(2);
+    o.style.opacity=(pe<=0?0:(.78+.22*f)*Math.min(1,pe*1.6)).toFixed(2);   // hintere Orbs bleiben farbig, nicht ausgegraut
     o.style.zIndex=String(20+Math.round(z*10));
     pts.push(x.toFixed(1)+","+y.toFixed(1));
     if(z>bestZ){ bestZ=z; bestId=o.dataset.c; }
@@ -1964,6 +1964,8 @@ function streamCoach(id, token){
   return askClaude(id, convHistory).then(r=>{
     if(token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
     const pr=processReply(r); addItems(pr.items);
+    const cleanTxt=(pr.clean||"").replace(/[…\.\s]/g,"");
+    if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(token===seqToken){ setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); } return; }
     convHistory.push({ role:"assistant", content:pr.clean });
     sharedLog.push({ who:id, text:pr.clean });
     return revealSynced(id, pr.clean, token, typ).then(()=>{
@@ -1986,17 +1988,18 @@ function coachThinking(){
   const t=el('<div class="tsys">'+COACHES[liveCoachId].name+' denkt nach …</div>');
   log.appendChild(t); log.scrollTop=log.scrollHeight; return t;
 }
+const VIKTOR_CHECKIN="(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn warm und persönlich und frag ihn offen, was heute ansteht oder wie es ihm geht — genau EINE Frage. Beginne AUF KEINEN FALL mit Messwerten, Recovery, Schlaf, Strain oder Zahlen; die sind nur dein stiller Hintergrund fürs Gesamtbild. Kurz: ein bis zwei Sätze plus die Frage.)";
 function enterLive(id, openingNote){
   liveCoachId=id; convHistory=[]; sharedLog=[];
   document.getElementById("chips").innerHTML="";
   showChatbar();
-  const trigger = openingNote
-    ? openingNote                                           // proaktive Anfrage: Coach greift direkt sein Anliegen auf
-    : (id==="viktor")
-    ? "(Interner Hinweis, nicht anzeigen: Marco startet seinen Tages-Check-in mit dir als Head Coach. Begrüße ihn warm und persönlich und frag ihn offen, was heute ansteht oder wie es ihm geht — genau EINE Frage. Beginne AUF KEINEN FALL mit Messwerten, Recovery, Schlaf, Strain oder Zahlen; die sind nur dein stiller Hintergrund fürs Gesamtbild. Kurz: ein bis zwei Sätze plus die Frage.)"
-    : "(Interner Hinweis, nicht anzeigen: Marco hat gerade das Gespräch mit dir geöffnet. Begrüße ihn kurz und herzlich in deinem Charakter und stelle ihm aus echter Neugier EINE offene Frage, um ihn besser kennenzulernen. Halte es kurz.)";
-  convHistory.push({ role:"user", content:trigger });
-  streamCoach(id, ++seqToken);
+  if(openingNote){                                          // proaktive Anfrage oder Check-in: der Coach ergreift das Wort
+    convHistory.push({ role:"user", content:openingNote });
+    streamCoach(id, ++seqToken);
+  } else {
+    // Normaler Aufruf: der Coach ist präsent und HÖRT ZU — du führst, kannst zuerst fragen. Kein automatischer Monolog.
+    setSpeakingUI(false);
+  }
 }
 function sendChat(){
   const inp=document.getElementById("chatinput");
