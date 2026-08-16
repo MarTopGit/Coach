@@ -344,7 +344,7 @@ function startParallax(){
     const ow=document.getElementById("orbitwrap");
     const sy=window.scrollY||0;
     const base=Math.min(1.04,(Math.min(window.innerWidth,480)-16)/320);
-    const shr=base*Math.max(.62,1-sy/560), op=Math.max(.2,1-sy/520);
+    const shr=base*Math.max(.72,1-sy/900), op=Math.max(.94,1-sy/2600);   // kaum Ausblenden beim Scrollen → Fotos bleiben farbig
     if(ow){ ow.style.transform="translate("+_px.toFixed(2)+"px,"+_py.toFixed(2)+"px) scale("+shr.toFixed(3)+")";
       ow.style.opacity=op.toFixed(2); }
     const bg=document.getElementById("bg-aura");
@@ -762,7 +762,7 @@ function renderViktorHero(){
   o.classList.add("orb"); o.classList.toggle("hasimg", !!AVOK.viktor);
   o.innerHTML=avatarInner("viktor")+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES.viktor.hex+'55"></span>';
   o.onclick=()=>openCall("viktor");                                   // Hero antippen → Viktor wartet, du führst
-  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>openCall("viktor", VIKTOR_CHECKIN);  // Check-in-Button → Viktor startet
+  const b=document.getElementById("checkinbtn"); if(b) b.onclick=()=>openCall("viktor");                  // Check-in öffnen → Viktor wartet ebenfalls, DU führst
 }
 function coachHasNote(id){
   const w=(typeof whoopData!=="undefined"&&whoopData&&whoopData.length)?whoopData[0]:null;
