@@ -557,7 +557,7 @@ function openCall(id, openingNote){
   tr.style.display=isTeam?"flex":"none";
   if(isTeam){
     const rowIds=(currentScript&&currentScript.parts)||ORDER;
-    tr.innerHTML=rowIds.map(cid=>`<div class="orb" data-c="${cid}" style="${orbStyle(cid)}">${avatarInner(cid)}</div>`).join("");
+    tr.innerHTML=rowIds.map(cid=>`<div class="orb" data-c="${cid}" style="${orbStyle(cid)}">${avatarInner(cid)}</div>`).join(""); paintOrbsIn(tr);
   }
   setSpeaker(isTeam?"viktor":id, true);
   call.classList.toggle("teammode", isTeam);
@@ -664,12 +664,12 @@ function runSequence(msgs, done, token, i=0){
   const wspans=words.map(w=>`<span class="w">${esc(w)}</span>`).join(" ");
   let line;
   if(isTeam){
-    line=el(`<div class="grow"><div class="gav" style="background:${c.hex}">${avatarInner(who)}</div>`+
+    line=el(`<div class="grow"><div class="gav" data-c="${who}" style="background:${c.hex}">${avatarInner(who)}</div>`+
       `<div class="gbub"><div class="gname" style="color:${c.hex}">${c.name}</div><div class="gtext">${wspans}</div></div></div>`);
   } else {
     line=el(`<div class="tline">${wspans}</div>`);
   }
-  log.appendChild(line); log.scrollTop=log.scrollHeight;
+  log.appendChild(line); if(isTeam) paintOrbsIn(line); log.scrollTop=log.scrollHeight;
   const spans=line.querySelectorAll(".w");
   let per=Math.max(60, estMs(text,c.rate)/words.length);
   let wi=0, rev=null;
@@ -722,6 +722,7 @@ function refreshOrbFaces(){
     o.classList.toggle("hasimg",!!AVOK[id]);
     const note=coachHasNote(id); o.classList.toggle("hasnote",note); if(note) o.style.setProperty("--pc",COACHES[id].hex);
     o.innerHTML=avatarInner(id)+'<i class="sheen"></i><span class="ring" style="border-color:'+COACHES[id].hex+'40"></span>'; });
+  try{ paintOrbsIn(document.getElementById("call")); }catch(e){}   // Team-Orbs im Call nachziehen, wenn Avatare fertig laden
   if(typeof renderViktorHero==="function") try{ renderViktorHero(); }catch(e){}
   if(typeof renderStaticOrbs==="function") try{ renderStaticOrbs(); }catch(e){}
   if(typeof renderPicker==="function") try{ renderPicker(); }catch(e){}
@@ -735,6 +736,10 @@ function loadAvatars(){
   }catch(e){} });
 }
 function orbBg(el,id){ if(el&&AVOK[id]){ el.style.backgroundImage="url('avatars/"+id+".png"+AVV+"')"; el.style.backgroundSize="cover"; el.style.backgroundPosition="center"; } }
+/* Team-/Gruppen-Orbs robust mit Foto füllen (Hintergrund + hasimg), auch wenn Avatare erst später laden */
+function paintOrbsIn(root){ if(!root||!root.querySelectorAll) return;
+  root.querySelectorAll(".orb[data-c],.gav[data-c]").forEach(o=>{ const id=o.dataset.c; if(!id||!COACHES[id]) return;
+    if(AVOK[id]) o.classList.add("hasimg"); orbBg(o,id); }); }
 function easeOutBack(x){ const c=1.70158; return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2); }
 function renderOrbit(){
   const now=new Date();
@@ -1123,6 +1128,29 @@ async function syncMemoryFromDB(){
   saveMem(); updateMemUI();
   await syncWorkoutsFromDB();
   await syncWhoopFromDB();
+  await pullSettingsFromDB();          // API-Keys ans Konto gebunden → nach Login automatisch zurück
+  try{ if("Notification" in window && Notification.permission==="granted" && typeof enablePush==="function") enablePush(); }catch(e){}  // Push still reaktivieren
+}
+/* Konto-gebundene Einstellungen (API-Keys) — in der eigenen, per Login geschützten Supabase-Zeile */
+async function pullSettingsFromDB(){
+  if(!sbUser || !sbToken) return;
+  const q="/rest/v1/user_settings?user_id=eq."+sbUserId+"&select=anth_key,el_key";
+  try{
+    let r=await fetch(SB_URL+q, { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
+    if(!r.ok) return; const rows=await r.json(); const s=rows&&rows[0]; if(!s) return;
+    if(typeof s.anth_key==="string" && s.anth_key){ anthKey=s.anth_key; store.set("anthKey",anthKey); const i=document.getElementById("anthkeyinput"); if(i) i.value=anthKey; }
+    if(typeof s.el_key==="string" && s.el_key){ elKey=s.el_key; store.set("elKey",elKey); elFail=false; const i=document.getElementById("elkeyinput"); if(i) i.value=elKey; }
+    try{ if(typeof syncToggles==="function") syncToggles(); }catch(e){}
+  }catch(e){}
+}
+async function pushSettingsToDB(){
+  if(!sbUser || !sbToken) return;
+  try{
+    await fetch(SB_URL+"/rest/v1/user_settings?on_conflict=user_id", { method:"POST",
+      headers:{ ...sbHeaders(), Prefer:"resolution=merge-duplicates,return=minimal" },
+      body:JSON.stringify({ user_id:sbUserId, anth_key:anthKey||"", el_key:elKey||"", updated_at:new Date().toISOString() }) });
+  }catch(e){}
 }
 async function pushAllMemoryReplace(){ if(!sbUser) return; await dbDeleteAll(); for(const it of memItems){ it.id=undefined; await dbInsertMemory(it); } }
 async function dbSelectWorkouts(){
@@ -1403,7 +1431,7 @@ function openLiveRound(topic){
   document.getElementById("transcript").innerHTML="";
   document.getElementById("chips").innerHTML="";
   const tr=document.getElementById("teamrow"); tr.style.display="flex";
-  tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join("");
+  tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join(""); paintOrbsIn(tr);
   setSpeaker(parts[0], true);
   call.classList.toggle("teammode", true); call.classList.add("open");
   showChatbar();
@@ -1820,7 +1848,7 @@ function switchToTeam(newIds){
   addOldify(); // bisherige 1:1-Zeilen zu Kontext schrumpfen
   const call=document.getElementById("call"); call.classList.add("teammode");
   const tr=document.getElementById("teamrow"); tr.style.display="flex";
-  tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join("");
+  tr.innerHTML=parts.map(cid=>'<div class="orb" data-c="'+cid+'" style="'+orbStyle(cid)+'">'+avatarInner(cid)+'</div>').join(""); paintOrbsIn(tr);
   showChatbar();
   teamTransition(parts, added, ()=>{
     const note = added.length
@@ -2317,11 +2345,11 @@ async function enablePush(){
   const prev=open.onclick;
   open.onclick=()=>{ if(prev) prev(); document.getElementById("anthkeyinput").value=anthKey; stat(); };
   document.getElementById("anthsave").onclick=()=>{
-    anthKey=document.getElementById("anthkeyinput").value.trim(); store.set("anthKey",anthKey); stat();
+    anthKey=document.getElementById("anthkeyinput").value.trim(); store.set("anthKey",anthKey); stat(); pushSettingsToDB();
     if(anthKey) document.getElementById("settings").style.display="none";
   };
   document.getElementById("anthremove").onclick=()=>{
-    anthKey=""; store.set("anthKey",""); document.getElementById("anthkeyinput").value=""; stat();
+    anthKey=""; store.set("anthKey",""); document.getElementById("anthkeyinput").value=""; stat(); pushSettingsToDB();
   };
   const mr=document.getElementById("memreset");
   if(mr) mr.onclick=()=>{ if(confirm("Alles Gemerkte löschen? Dein Team startet dann wieder bei null.")){ memItems=[]; saveMem(); updateMemUI(); if(sbUser){ dbDeleteAll(); } } };
@@ -2394,12 +2422,12 @@ document.getElementById("settingsbtn").onclick=()=>{
 document.getElementById("elsave").onclick=()=>{
   elKey=document.getElementById("elkeyinput").value.trim();
   store.set("elKey",elKey); elFail=false; audioCache.clear();
-  elStatus(); syncToggles();
+  elStatus(); syncToggles(); pushSettingsToDB();
   if(elKey) settingsEl.style.display="none";
 };
 document.getElementById("elremove").onclick=()=>{
   elKey=""; store.set("elKey",""); document.getElementById("elkeyinput").value="";
-  elStatus(); syncToggles();
+  elStatus(); syncToggles(); pushSettingsToDB();
 };
 document.getElementById("elclose").onclick=()=>{ settingsEl.style.display="none"; };
 function elErrorText(e){
