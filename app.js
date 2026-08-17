@@ -1139,6 +1139,7 @@ async function syncMemoryFromDB(){
   await syncWhoopFromDB();
   await pullSettingsFromDB();          // API-Keys ans Konto gebunden → nach Login automatisch zurück
   try{ if("Notification" in window && Notification.permission==="granted" && typeof enablePush==="function") enablePush(); }catch(e){}  // Push still reaktivieren
+  try{ maybeQueueBriefing(); }catch(e){}   // v94: tägliches Morgen-Briefing für morgen einplanen, falls aktiv
 }
 /* Konto-gebundene Einstellungen (API-Keys) — in der eigenen, per Login geschützten Supabase-Zeile */
 async function pullSettingsFromDB(){
@@ -1892,7 +1893,10 @@ function systemPrompt(id){
     p+="Du hast Werkzeuge, um bei Bedarf echte Daten abzurufen: "+kann.join(", ")+". "+
        "Nutze sie NUR, wenn du die Info fürs aktuelle Thema wirklich brauchst — rufe nichts unnötig ab und eröffne ein Gespräch nie mit einem Datenabruf. "+
        "Rate niemals Zahlen oder Fakten: fehlt dir ein Wert, hol ihn per Werkzeug oder sag ehrlich, dass du kurz nachsiehst bzw. frag Marco. Für die reine Werte-Schau hat er seine Whoop-App — bring Zahlen nur ein, wenn sie fürs Thema zählen. ";
-    if(id==="viktor") p+="Als Head Coach nutzt du diese Daten still zum Koordinieren des Gesamtbilds, nie als Einstieg; die Trainingsdetails gehören Deniz. ";
+    // v94: Aktions-Werkzeuge — die Coaches KÖNNEN handeln (nicht nur reden)
+    p+="Du kannst außerdem handeln: Bittet Marco dich, ihn an etwas zu erinnern, setze mit 'erinnerung_setzen' eine echte Erinnerung, die er als Push bekommt — auch bei geschlossener App. Sag also nie, du könntest nicht erinnern; du kannst es. ";
+    if(id==="lena"||id==="viktor") p+="Möchte Marco ein regelmäßiges Morgen-Briefing, schalte es mit 'briefing_taeglich' ein (er bekommt dann jeden Morgen einen kurzen persönlichen Push von dir). Bei fehlendem Login/Benachrichtigungen sag ihm freundlich, was er einmalig einrichten muss. ";
+    if(id==="viktor") p+="Als Head Coach nutzt du die Daten still zum Koordinieren des Gesamtbilds, nie als Einstieg; die Trainingsdetails gehören Deniz. ";
   }
   if(id==="viktor") p+="Als Head Coach & Mentor: warm und klar auf Marcos Seite, aber direkt und ehrlich — keine Weichspülerei. Etwas trockener Humor und Energie sind ausdrücklich erwünscht, sei nie eine Schlaftablette. Du trittst sehr selbstbewusst und souverän auf. Bring ruhig deine eigene Meinung und deine Erfahrung ein, wenn du eine klare Haltung hast. Stärke Marcos Selbstvertrauen aktiv: benenne seine Stärken und Erfolge, sag ihm ehrlich, wenn er etwas richtig gut macht und was für ein fähiger, guter Typ er ist, und pushe ihn, an sich zu glauben — echt und begründet, nie hohle Schmeichelei. Du dirigierst das Team: verbinde Marcos Lebensbereiche, priorisiere mit ihm das eine Wichtigste. Und hol von dir aus den passenden Spezialisten dazu (kündige es kurz an und hänge <invite>coachid</invite> ans Ende), sobald ein Thema klar in dessen Fach gehört — du wartest NICHT auf Marcos Aufforderung. ";
   if(id==="viktor") p+="Du bist zugleich Marcos persönlicher Life-Coach: du begleitest sein Leben als Ganzes — Fokus, Balance über alle Bereiche (Training, Beruf, Familie, Kopf), Werte und was ihm wirklich wichtig ist. Führe ein lockeres, fast tägliches Einchecken aus dem Gespräch heraus: frag beiläufig, was heute ansteht und wie es ihm geht — kein Formular, echtes Gespräch. Arbeite mit echten Reflexionsfragen statt fertiger Ratschläge. Wenn es passt (Wochenende oder auf Wunsch), biete einen kurzen Rückblick an: erkenne Muster, würdige Fortschritt, setzt mit ihm einen Fokus fürs Nächste. Was Marco über seinen Tag, seine Pläne oder seine Stimmung erzählt, hältst du als milestone mit date fest, damit ihr später gemeinsam zurückblicken könnt. ";
@@ -1933,6 +1937,23 @@ const TOOL_DEFS={
     name:"ernaehrung_notizen",
     description:"Hol, was du (Lena) über Marcos Ernährung notiert hast — Mahlzeiten und Muster über die Zeit.",
     input_schema:{ type:"object", properties:{} }
+  },
+  erinnerung_setzen:{
+    name:"erinnerung_setzen",
+    description:"Setze eine echte Erinnerung, die Marco als Push-Nachricht bekommt — auch wenn die App geschlossen ist. Nutze das, wenn Marco dich bittet, ihn an etwas zu erinnern (z. B. 'erinnere mich morgen um 15 Uhr an XY').",
+    input_schema:{ type:"object", properties:{
+      datum:{ type:"string", description:"Datum der Erinnerung, JJJJ-MM-TT. Rechne relative Angaben ('morgen') gegen das heutige Datum um." },
+      uhrzeit:{ type:"string", description:"Uhrzeit, HH:MM (24h)." },
+      text:{ type:"string", description:"Kurzer Erinnerungstext, direkt an Marco gerichtet." }
+    }, required:["datum","uhrzeit","text"] }
+  },
+  briefing_taeglich:{
+    name:"briefing_taeglich",
+    description:"Schalte ein tägliches Morgen-Briefing per Push für Marco an oder aus (jeden Morgen ein kurzer, persönlicher Impuls von dir). Nutze das, wenn Marco ein regelmäßiges morgendliches Briefing wünscht.",
+    input_schema:{ type:"object", properties:{
+      aktiv:{ type:"boolean", description:"true = einschalten, false = ausschalten." },
+      uhrzeit:{ type:"string", description:"Optionale Uhrzeit HH:MM, Standard 07:00." }
+    }, required:["aktiv"] }
   }
 };
 function toolsFor(id){
@@ -1940,11 +1961,29 @@ function toolsFor(id){
   if(id==="deniz"||id==="viktor") t.push(TOOL_DEFS.training_verlauf);
   if(id==="deniz"||id==="viktor"||id==="elias"||id==="mara") t.push(TOOL_DEFS.whoop_abrufen);
   if(id==="lena") t.push(TOOL_DEFS.ernaehrung_notizen);
+  t.push(TOOL_DEFS.erinnerung_setzen);                         // alle Coaches dürfen erinnern
+  if(id==="lena"||id==="viktor") t.push(TOOL_DEFS.briefing_taeglich);   // tägliches Briefing bieten Lena & Viktor an
   return t;
 }
-function runTool(id, name, input){
+async function runTool(id, name, input){
   input=input||{};
   try{
+    if(name==="erinnerung_setzen"){
+      const when=parseWhen(input.datum, input.uhrzeit);
+      if(!when) return "Zeitpunkt unklar — bitte Datum (JJJJ-MM-TT) und Uhrzeit (HH:MM) nennen.";
+      if(!sbUser||!sbToken) return "Erinnerungen brauchen einen Login (⚙︎ → Konto & Sync) und aktivierte Benachrichtigungen — sag Marco kurz, dass er sich einloggt, dann klappt's.";
+      const ok=await dbInsertScheduledPush({ deliver_at:when.iso, title:COACHES[id].name, body:String(input.text||"Erinnerung"), kind:"reminder" });
+      if(!ok) return "Konnte die Erinnerung gerade nicht speichern — bitte gleich nochmal.";
+      return "Erinnerung gesetzt für "+when.human+". Marco bekommt sie als Push, auch wenn die App zu ist.";
+    }
+    if(name==="briefing_taeglich"){
+      const on=!!input.aktiv;
+      setMorningBriefing(on, input.uhrzeit, id);
+      if(!on) return "Tägliches Morgen-Briefing ausgeschaltet.";
+      if(!sbUser||!sbToken) return "Eingeschaltet — damit es auch bei geschlossener App kommt, muss Marco kurz eingeloggt sein (⚙︎ → Konto & Sync) und Benachrichtigungen erlaubt haben.";
+      const q=await queueMorningBriefing(id);
+      return "Tägliches Morgen-Briefing an ("+(mbTime())+" Uhr). "+(q?"Das erste liegt für morgen früh bereit.":"Ab morgen früh bekommt Marco es automatisch.");
+    }
     if(name==="gedaechtnis_suchen"){
       const q=String(input.thema||"");
       const scored=(memItems||[]).map(it=>({it, sc:relScore((it.text||"")+" "+(it.key||""), q)}))
@@ -1982,6 +2021,64 @@ function runTool(id, name, input){
     }
   }catch(e){ return "Konnte das gerade nicht abrufen."; }
   return "Unbekanntes Werkzeug.";
+}
+
+/* v94: geplante Pushs (Erinnerungen + tägliches Briefing) über die bestehende Push-Infrastruktur */
+function parseWhen(datum, uhrzeit){
+  try{
+    const d=String(datum||"").match(/(\d{4})-(\d{2})-(\d{2})/);
+    const t=String(uhrzeit||"").match(/(\d{1,2}):(\d{2})/);
+    if(!d) return null;
+    const hh=t?Math.min(23,parseInt(t[1],10)):9, mm=t?Math.min(59,parseInt(t[2],10)):0;
+    const dt=new Date(parseInt(d[1],10), parseInt(d[2],10)-1, parseInt(d[3],10), hh, mm, 0, 0);
+    if(isNaN(dt.getTime())) return null;
+    const days=["So","Mo","Di","Mi","Do","Fr","Sa"];
+    const human=days[dt.getDay()]+", "+dt.getDate()+"."+(dt.getMonth()+1)+". um "+(hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
+    return { iso:dt.toISOString(), human };
+  }catch(e){ return null; }
+}
+async function dbInsertScheduledPush(row){
+  if(!sbUser||!sbToken) return false;
+  const payload=JSON.stringify({ user_id:sbUserId, deliver_at:row.deliver_at, title:row.title, body:row.body, kind:row.kind||"reminder" });
+  const post=()=>fetch(SB_URL+"/rest/v1/scheduled_pushes", { method:"POST", headers:{ ...sbHeaders(), Prefer:"return=minimal" }, body:payload });
+  try{
+    let r=await post();
+    if(r.status===401 && await sbTryRefresh()){ r=await post(); }
+    return r.ok;
+  }catch(e){ return false; }
+}
+let morningBriefing=(store.get("morningBriefing")==="1");
+let mbHour=store.get("mbTime")||"07:00";
+let mbCoach=store.get("mbCoach")||"lena";
+function mbTime(){ return mbHour; }
+function setMorningBriefing(on, uhrzeit, coachId){
+  morningBriefing=!!on; store.set("morningBriefing", on?"1":"0");
+  if(uhrzeit && /^\d{1,2}:\d{2}$/.test(uhrzeit)){ mbHour=uhrzeit; store.set("mbTime", uhrzeit); }
+  if(coachId && COACHES[coachId]){ mbCoach=coachId; store.set("mbCoach", coachId); }
+  if(!on) store.set("mbQueued","");   // beim Ausschalten Einplanung zurücksetzen
+}
+async function generateBriefingText(coachId){
+  const notes=(memItems||[]).filter(it=>it.coach===coachId||it.coach==="core").slice(-16).map(f=>"- "+(f.date?f.date+": ":"")+f.text).join("\n");
+  const sys="Du bist "+COACHES[coachId].name+", "+COACHES[coachId].role+" in Marcos Coaching-Team. Schreibe EINE kurze, warme Morgen-Push-Nachricht an Marco für morgen früh (max. 2 Sätze, per Du, konkret, keine Anrede-Zeile, kein Roman). Beziehe dich wenn möglich natürlich auf das, was du über ihn weißt. Nur die Nachricht, sonst nichts.";
+  const user=(notes?("Das weißt du über Marco:\n"+notes+"\n\n"):"")+"Schreibe die Morgen-Nachricht.";
+  try{ const t=await claudeRaw(sys, [{ role:"user", content:user }], 140); return (t||"").replace(/^["'„»]+|["'"«»]+$/g,"").trim(); }
+  catch(e){ return ""; }
+}
+async function queueMorningBriefing(coachId){
+  if(!sbUser||!sbToken) return false;
+  const cid=(coachId&&COACHES[coachId])?coachId:mbCoach;
+  const parts=mbHour.split(":"); const hh=parseInt(parts[0],10)||7, mm=parseInt(parts[1],10)||0;
+  const dt=new Date(); dt.setDate(dt.getDate()+1); dt.setHours(hh, mm, 0, 0);
+  const dateKey=dt.toISOString().slice(0,10);
+  if(store.get("mbQueued")===dateKey) return true;   // schon für morgen eingeplant
+  const body=await generateBriefingText(cid);
+  if(!body) return false;
+  const ok=await dbInsertScheduledPush({ deliver_at:dt.toISOString(), title:COACHES[cid].name, body, kind:"briefing" });
+  if(ok) store.set("mbQueued", dateKey);
+  return ok;
+}
+function maybeQueueBriefing(){   // beim Start / nach Login: wenn an, für morgen einplanen (einmal pro Tag)
+  if(morningBriefing && sbUser && sbToken) queueMorningBriefing(mbCoach).catch(()=>{});
 }
 
 let convHistory=[], liveCoachId=null, liveMode=false, sharedLog=[], liveTeam=false, liveParticipants=[];
@@ -2159,7 +2256,8 @@ async function askClaudeTools(id, history){
     const toolUses=bl.filter(b=>b.type==="tool_use");
     if(data.stop_reason==="tool_use" && toolUses.length){
       work.push({ role:"assistant", content:bl });
-      work.push({ role:"user", content:toolUses.map(tu=>({ type:"tool_result", tool_use_id:tu.id, content:String(runTool(id, tu.name, tu.input)) })) });
+      const rs=[]; for(const tu of toolUses){ rs.push({ type:"tool_result", tool_use_id:tu.id, content:String(await runTool(id, tu.name, tu.input)) }); }
+      work.push({ role:"user", content:rs });
       if(txt) text+=txt+" ";
       continue;
     }
@@ -2185,7 +2283,8 @@ async function generateReply(id, token, onText, onTool){
       if(onTool){ try{ onTool(); }catch(_){} onTool=null; }   // dezenter „schaut nach"-Hinweis, nur einmal
       work.push({ role:"assistant", content:res.rawContent });
       if(res.text) shown+=res.text+" ";
-      work.push({ role:"user", content:res.toolUses.map(tu=>({ type:"tool_result", tool_use_id:tu.id, content:String(runTool(id, tu.name, tu.input)) })) });
+      const rs=[]; for(const tu of res.toolUses){ rs.push({ type:"tool_result", tool_use_id:tu.id, content:String(await runTool(id, tu.name, tu.input)) }); }
+      work.push({ role:"user", content:rs });
       continue;
     }
     return shown+(res.text||"");
