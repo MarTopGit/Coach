@@ -1138,6 +1138,7 @@ async function syncMemoryFromDB(){
   await syncWorkoutsFromDB();
   await syncWhoopFromDB();
   await pullSettingsFromDB();          // API-Keys ans Konto gebunden → nach Login automatisch zurück
+  await pullTeamBrain();               // v96: Server-Team-Hirn — vorbereitete Agenda + Team-Notizen holen
   try{ if("Notification" in window && Notification.permission==="granted" && typeof enablePush==="function") enablePush(); }catch(e){}  // Push still reaktivieren
   try{ maybeQueueBriefing(); }catch(e){}   // v94: tägliches Morgen-Briefing für morgen einplanen, falls aktiv
 }
@@ -1161,6 +1162,31 @@ async function pullSettingsFromDB(){
       if(changed) saveConvStore();
     }
     try{ if(typeof syncToggles==="function") syncToggles(); }catch(e){}
+  }catch(e){}
+}
+async function pullTeamBrain(){                              // v96: Server-Team-Hirn — Agenda + Team-Notizen holen
+  if(!sbUser || !sbToken) return;
+  const q="/rest/v1/team_brain?user_id=eq."+sbUserId+"&select=agenda,notes,updated_at";
+  try{
+    let r=await fetch(SB_URL+q, { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
+    if(!r.ok) return; const rows=await r.json(); const b=rows&&rows[0]; if(!b) return;
+    let touched=false;
+    if(Array.isArray(b.agenda) && b.agenda.length){
+      const items=b.agenda.map(it=>({
+        coaches:(Array.isArray(it.coaches)?it.coaches:[]).map(c=>String(c).toLowerCase()).filter(c=>COACHES[c]).slice(0,3),
+        text:String(it.text||"").replace(/\s+/g," ").trim().slice(0,90),
+        reason:String(it.reason||it.text||"").slice(0,300)
+      })).filter(it=>it.coaches.length && it.text);
+      if(items.length){ teamAgenda={ ts:b.updated_at?Date.parse(b.updated_at):Date.now(), items:items.slice(0,4), server:true }; store.set("teamAgenda", JSON.stringify(teamAgenda)); touched=true; }
+    }
+    if(Array.isArray(b.notes) && b.notes.length){
+      let changed=false;
+      b.notes.forEach(n=>{ const t=String((n&&n.t)||"").trim(); if(!t) return; if(logEntries.some(e=>e.t===t)) return;
+        logEntries.unshift({ t, d:(n&&n.d)||new Date().toISOString(), coach:(n&&n.coach&&COACHES[n.coach])?n.coach:"viktor" }); changed=true; });
+      if(changed){ logEntries=logEntries.slice(0,50); saveLog(); touched=true; }
+    }
+    if(touched){ try{ renderRequests(); renderLog(); }catch(e){} }
   }catch(e){}
 }
 async function pushSettingsToDB(){
@@ -1751,7 +1777,11 @@ function logTeamAgenda(items){
 }
 async function refreshTeamAgenda(force){
   if(!anthKey || refreshTeamAgenda._busy) return;
-  if(!force && teamAgenda.items.length && (Date.now()-(teamAgenda.ts||0) < 20*3600*1000)) return;  // höchstens ~1×/Tag
+  if(!force && teamAgenda.items.length){
+    const age=Date.now()-(teamAgenda.ts||0);
+    // Server-Team-Hirn hat Vorrang: Client erzeugt nur, wenn der Server länger nicht gelaufen ist
+    if(age < (teamAgenda.server ? 26*3600*1000 : 20*3600*1000)) return;
+  }
   refreshTeamAgenda._busy=true;
   try{
     const mem=(memItems||[]).slice(-40).map(f=>"- ["+f.coach+"/"+f.kind+"] "+(f.date?f.date+": ":"")+(f.key?f.key+": ":"")+f.text).join("\n");
