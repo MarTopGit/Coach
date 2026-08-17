@@ -1448,11 +1448,11 @@ function claudeRaw(system, messages, maxTokens){
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
     .then(d=>((d.content||[]).filter(x=>x.type==="text").map(x=>x.text).join(" ")).trim());
 }
-function openLiveRound(topic){
+function openLiveRound(topic, proactiveReason){
   topic=(topic||"").trim(); if(!topic) return;
   const parts=(selectedParts&&selectedParts.length)?selectedParts.slice():ORDER.slice();
   paused=false; resumeFn=null; liveMode=true; liveCoachId=null;
-  liveTeam=true; liveParticipants=parts.slice(); sharedLog=[{ who:"marco", text:topic }];
+  liveTeam=true; liveParticipants=parts.slice(); sharedLog=proactiveReason?[]:[{ who:"marco", text:topic }];
   currentScript={ isTeam:true, parts:parts }; isTeam=true; callOpen=true;
   const call=document.getElementById("call");
   document.getElementById("transcript").innerHTML="";
@@ -1464,11 +1464,14 @@ function openLiveRound(topic){
   showChatbar();
   const log=document.getElementById("transcript");
   log.appendChild(el('<div class="tsys">Team-Runde</div>'));
-  log.appendChild(el('<div class="tme">'+esc(topic)+'</div>'));
+  if(!proactiveReason) log.appendChild(el('<div class="tme">'+esc(topic)+'</div>'));
   log.scrollTop=log.scrollHeight;
   // Versammlung: Orbs fliegen zusammen, Halo + Chime, danach starten die Antworten
   teamTransition(parts, [], ()=>{
-    teamRespond("(Auftakt der Runde zu diesem Thema. Jeder Teilnehmer, der etwas beizutragen hat, meldet sich einmal kurz zu Wort — nicht nur einer. Danach läuft es als lockeres Gespräch weiter.)");
+    const note = proactiveReason
+      ? "(Interner Hinweis, nicht anzeigen: Ihr meldet euch von euch aus als Team bei Marco — er hat euch nicht gefragt. Ihr habt euch im Hintergrund abgestimmt. Anlass: "+proactiveReason+" Der/die zuständigen Coaches bringen das Thema herzlich, konkret und in ihrem Charakter bei ihm ein und stellen ihm dazu genau EINE offene Frage. Kurz, kein Messwert-Einstieg, nicht alle auf einmal reden.)"
+      : "(Auftakt der Runde zu diesem Thema. Jeder Teilnehmer, der etwas beizutragen hat, meldet sich einmal kurz zu Wort — nicht nur einer. Danach läuft es als lockeres Gespräch weiter.)";
+    teamRespond(note);
   });
 }
 function startRound(topic){
@@ -1733,6 +1736,44 @@ function dismissRequest(key){ const d=reqDismissed(); d[key]=Date.now(); try{ st
 function requestTrigger(reason){
   return "(Interner Hinweis, nicht anzeigen: Du meldest dich von dir aus bei Marco — nicht er bei dir. Anlass: "+reason+" Sprich ihn herzlich und in deinem Charakter an, komm natürlich und ohne Umschweife auf genau dieses Thema und stelle ihm dazu eine offene Frage. Halte es kurz, keine Messwerte als Einstieg.)";
 }
+/* v95: Echte, aktuelle Team-Agenda — das Team erzeugt aus Marcos Daten konkrete Themen (auch als Teil-Team) */
+let teamAgenda={ ts:0, items:[] };
+try{ const a=JSON.parse(store.get("teamAgenda")||"null"); if(a && Array.isArray(a.items)) teamAgenda=a; }catch(e){}
+function logTeamAgenda(items){
+  let changed=false;
+  (items||[]).filter(it=>it.coaches && it.coaches.length>1).forEach(it=>{
+    const t="Team-Absprache: "+it.text;
+    if(logEntries.some(e=>e.t===t)) return;
+    logEntries.unshift({ t, d:new Date().toISOString(), coach:it.coaches[0] });
+    changed=true;
+  });
+  if(changed){ logEntries=logEntries.slice(0,50); saveLog(); try{ renderLog(); }catch(e){} }
+}
+async function refreshTeamAgenda(force){
+  if(!anthKey || refreshTeamAgenda._busy) return;
+  if(!force && teamAgenda.items.length && (Date.now()-(teamAgenda.ts||0) < 20*3600*1000)) return;  // höchstens ~1×/Tag
+  refreshTeamAgenda._busy=true;
+  try{
+    const mem=(memItems||[]).slice(-40).map(f=>"- ["+f.coach+"/"+f.kind+"] "+(f.date?f.date+": ":"")+(f.key?f.key+": ":"")+f.text).join("\n");
+    const logs=(logEntries||[]).slice(0,8).map(e=>"- ("+fmtWhen(e.d)+", "+(COACHES[e.coach]?COACHES[e.coach].name:e.coach)+") "+e.t).join("\n");
+    const wsig=[]; try{ if(whoopData&&whoopData[0]){ const d=whoopData[0]; if(d.recovery!=null)wsig.push("Recovery "+d.recovery+"%"); if(d.sleep_hours!=null)wsig.push("Schlaf "+d.sleep_hours+"h"); } }catch(e){}
+    const sys="Du bist die koordinierende Intelligenz hinter Marcos Coaching-Team, das sich im Hintergrund über ihn abgestimmt hat. "+
+      "Erzeuge 3 bis 4 KONKRETE, AKTUELLE Themen, die das Team (oder ein Teil davon) proaktiv mit Marco besprechen möchte — abgeleitet aus dem, was ihr über ihn wisst, den letzten Gesprächen und aktuellen Signalen. "+
+      "Keine Floskeln, keine generischen Check-ins: jedes Thema bezieht sich auf etwas Echtes und Spezifisches. Manche Themen betreffen nur EINEN Coach, andere MEHRERE, die sich abgesprochen haben. Variiere. "+
+      "Antworte NUR als JSON-Array; jedes Element {\"coaches\":[ids],\"text\":\"kurzer konkreter Vorschlag in der Stimme des Teams, max 72 Zeichen\",\"reason\":\"1 Satz interner Anlass für die Coaches\"}. "+
+      "Erlaubte ids: "+ORDER.join(", ")+". 1 bis 3 Coaches je Thema. Weißt du noch wenig über Marco, schlage konkret formulierte Kennenlern-Themen vor.";
+    const user="Das wisst ihr über Marco:\n"+(mem||"(noch wenig)")+"\n\nLetzte Gespräche:\n"+(logs||"(keine)")+(wsig.length?("\n\nAktuelle Signale: "+wsig.join(", ")):"");
+    const raw=await claudeRaw(sys, [{ role:"user", content:user }], 600);
+    let items=[]; try{ const m=raw.match(/\[[\s\S]*\]/); items=JSON.parse(m?m[0]:raw); }catch(e){ items=[]; }
+    items=(items||[]).filter(it=>it&&it.text).map(it=>({
+      coaches:(Array.isArray(it.coaches)?it.coaches:[]).map(c=>String(c).toLowerCase()).filter(c=>COACHES[c]).slice(0,3),
+      text:String(it.text).replace(/\s+/g," ").trim().slice(0,90),
+      reason:String(it.reason||it.text).slice(0,300)
+    })).filter(it=>it.coaches.length && it.text);
+    if(items.length){ teamAgenda={ ts:Date.now(), items:items.slice(0,4) }; store.set("teamAgenda", JSON.stringify(teamAgenda)); logTeamAgenda(teamAgenda.items); try{ renderRequests(); }catch(e){} }
+  }catch(e){}
+  refreshTeamAgenda._busy=false;
+}
 const CHECKIN_TEXT={ viktor:"Kurzer Check-in — wie steht's bei dir?", deniz:"Wie läuft's mit dem Training?", lena:"Wie fühlst du dich energiemäßig?", peter:"Wie läuft's gerade beruflich?", elias:"Wie geht's dir im Kopf?", mara:"Wie ist dein Tempo gerade?" };
 const SHARE_TEXT={ viktor:"Ich hab einen Gedanken zu deinem Fokus.", deniz:"Ein Trainings-Tipp, der was bringt.", lena:"Ein Ernährungs-Kniff für dich.", peter:"Ein Impuls für deine Karriere.", elias:"Etwas, das ich dir mitgeben will.", mara:"Ein kleiner Achtsamkeits-Impuls." };
 function buildRequests(){
@@ -1754,14 +1795,21 @@ function buildRequests(){
     {coach:"mara",cond:gap("mara","was_erdet"),key:"mara_erdet",text:"Was erdet dich eigentlich?",reason:"Du möchtest wissen, was Marco erdet und ihm Ruhe gibt."}
   ];
   gapReqs.forEach(r=>{ if(r.cond) out.push({coach:r.coach,key:r.key,text:r.text,reason:r.reason,pri:1}); });
-  // 2) Rotierender Check-in: ein Coach pro Tag meldet sich einfach so (wie im echten Leben)
-  const ci=ORDER[day % ORDER.length];
-  out.push({coach:ci,key:"checkin_"+ci+"_"+day,text:CHECKIN_TEXT[ci],pri:2,
-    reason:"Du meldest dich von dir aus, um zu hören, wie es Marco geht und wie es in deinem Bereich läuft — wie ein echter Coach, der in Kontakt bleibt."});
-  // 3) Rotierender Impuls: ein anderer Coach gibt von sich aus etwas Spannendes mit
-  const sh=ORDER[(day+3) % ORDER.length];
-  out.push({coach:sh,key:"share_"+sh+"_"+day,text:SHARE_TEXT[sh],pri:3,
-    reason:"Du möchtest Marco von dir aus einen kurzen, konkreten und spannenden Impuls aus deinem Fach mitgeben, der zu dem passt, was du über ihn weißt — kein Smalltalk, etwas Nützliches oder Überraschendes."});
+  // 2) Echte Team-Agenda: konkrete, aktuelle Themen (mal ein Coach, mal ein abgestimmtes Teil-Team)
+  if(teamAgenda.items && teamAgenda.items.length){
+    const stampKey=Math.floor((teamAgenda.ts||0)/1e7);
+    teamAgenda.items.forEach((it,idx)=>{
+      out.push({ coach:it.coaches[0], coaches:it.coaches.slice(), key:"agenda_"+idx+"_"+stampKey, text:it.text, reason:it.reason, pri:2, stamp:teamAgenda.ts });
+    });
+  } else {
+    // Fallback, bis das Team seine Agenda erzeugt hat: ein rotierender Check-in + Impuls
+    const ci=ORDER[day % ORDER.length];
+    out.push({coach:ci,key:"checkin_"+ci+"_"+day,text:CHECKIN_TEXT[ci],pri:2,
+      reason:"Du meldest dich von dir aus, um zu hören, wie es Marco geht und wie es in deinem Bereich läuft — wie ein echter Coach, der in Kontakt bleibt."});
+    const sh=ORDER[(day+3) % ORDER.length];
+    out.push({coach:sh,key:"share_"+sh+"_"+day,text:SHARE_TEXT[sh],pri:3,
+      reason:"Du möchtest Marco von dir aus einen kurzen, konkreten und spannenden Impuls aus deinem Fach mitgeben, der zu dem passt, was du über ihn weißt — kein Smalltalk, etwas Nützliches oder Überraschendes."});
+  }
   // 4) Whoop NUR bei starkem Signal, höchstens einer, nachrangig
   if(w){
     if(w.recovery!=null&&w.recovery<40) out.push({coach:"mara",key:"mara_lowrec_"+day,text:"Dein Körper ruft nach Pause — kurz durchatmen?",pri:4,reason:"Deutlich niedrige Recovery; ein Moment Entschleunigung würde Marco guttun."});
@@ -1774,29 +1822,50 @@ function activeRequests(){
   let list=buildRequests().filter(r=> !(dis[r.key] && now-dis[r.key]<COOL));
   list.sort((a,b)=>(a.pri||5)-(b.pri||5));
   const seen={}, res=[];
-  for(const r of list){ if(seen[r.coach]) continue; seen[r.coach]=1; res.push(r); if(res.length>=3) break; } // max. einer je Coach, gute Mischung
+  const isTeamItem=r=>r.coaches && r.coaches.length>1;
+  for(const r of list){
+    if(!isTeamItem(r)){ if(seen[r.coach]) continue; seen[r.coach]=1; }   // Solo: max. einer je Coach; Team-Themen immer erlaubt
+    res.push(r); if(res.length>=3) break;
+  }
+  // Mindestens ein aktuelles Team-Thema durchlassen, falls vorhanden (nicht von Kennenlern-Lücken verdrängen)
+  if(res.length && !res.some(isTeamItem)){
+    const t=list.find(isTeamItem);
+    if(t){ res[res.length-1]=t; }
+  }
   return res;
 }
-function openRequest(req){ if(!req||!COACHES[req.coach]) return; openCall(req.coach, requestTrigger(req.reason)); }
+function openRequest(req){
+  if(!req) return;
+  const coaches=(req.coaches&&req.coaches.length)?req.coaches.filter(c=>COACHES[c]):(COACHES[req.coach]?[req.coach]:[]);
+  if(coaches.length>1){ selectedParts=coaches.slice(); openLiveRound(req.text||"Team-Thema", req.reason); }   // Teil-Team, das Team bringt das Thema ein
+  else if(coaches.length===1){ openCall(coaches[0], requestTrigger(req.reason)); }
+}
 function renderRequests(){
-  const box=document.getElementById("requests"); if(!box) return;
+  const box=document.getElementById("requests"); if(!box){ try{ refreshTeamAgenda(); }catch(e){} return; }
   const list=activeRequests();
-  if(!list.length){ box.className=""; box.innerHTML=""; return; }
+  if(!list.length){ box.className=""; box.innerHTML=""; try{ refreshTeamAgenda(); }catch(e){} return; }
   box.className="has";
   box.innerHTML='<div class="reqhead">Anfragen deines Teams</div>'+list.map((r,i)=>{
-    const c=COACHES[r.coach];
+    const team=r.coaches && r.coaches.length>1;
+    const lead=COACHES[team?r.coaches[0]:r.coach];
+    const orbs = team
+      ? '<div class="rqorbs">'+r.coaches.slice(0,3).map((cid,j)=>'<div class="orb rqorb'+(AVOK[cid]?' hasimg':'')+'" data-c="'+cid+'" style="'+orbStyle(cid)+';margin-left:'+(j?-13:0)+'px;z-index:'+(9-j)+'">'+avatarInner(cid)+'</div>').join("")+'</div>'
+      : '<div class="orb rqorb'+(AVOK[r.coach]?' hasimg':'')+'" data-c="'+r.coach+'" style="'+orbStyle(r.coach)+'">'+avatarInner(r.coach)+'</div>';
+    const name = team ? r.coaches.map(cid=>COACHES[cid].name).join(" & ") : lead.name;
+    const sub = team ? '<div class="rqsub">Team-Absprache'+(r.stamp?' · '+fmtWhen(r.stamp):'')+'</div>' : '';
     return '<div class="reqcard" data-k="'+r.key+'" style="animation-delay:'+(0.05+i*0.12).toFixed(2)+'s">'+
-      '<div class="orb rqorb'+(AVOK[r.coach]?' hasimg':'')+'" style="'+orbStyle(r.coach)+'">'+avatarInner(r.coach)+'</div>'+
-      '<div class="rqbody"><div class="rqname" style="color:'+c.hex+'">'+esc(c.name)+'</div>'+
-      '<div class="rqtext">'+esc(r.text)+'</div></div>'+
+      orbs+
+      '<div class="rqbody"><div class="rqname" style="color:'+lead.hex+'">'+esc(name)+'</div>'+
+      '<div class="rqtext">'+esc(r.text)+'</div>'+sub+'</div>'+
       '<button class="rqx" aria-label="Ausblenden">✕</button></div>';
   }).join("");
   list.forEach(r=>{
     const card=box.querySelector('.reqcard[data-k="'+r.key+'"]'); if(!card) return;
-    orbBg(card.querySelector(".rqorb"), r.coach);
+    card.querySelectorAll(".rqorb").forEach(o=>{ try{ orbBg(o, o.dataset.c||r.coach); }catch(e){} });
     card.onclick=(e)=>{ if(e&&e.target&&e.target.closest&&e.target.closest(".rqx")) return; openRequest(r); };
     const x=card.querySelector(".rqx"); if(x) x.onclick=(e)=>{ e.stopPropagation(); dismissRequest(r.key); };
   });
+  try{ refreshTeamAgenda(); }catch(e){}   // im Hintergrund frische Themen holen (höchstens ~1×/Tag)
 }
 const COACHING_METHOD="Coache mit echter Methode (im Rahmen deiner Persönlichkeit), nicht bloß als Ratgeber: Stelle zuerst kraftvolle, offene Fragen, um Marcos Situation, sein Ziel und sein Warum zu verstehen, bevor du Lösungen anbietest — meist bringt die richtige Frage mehr als ein schneller Rat. Hilf ihm, Ziele in kleine, konkrete nächste Schritte zu zerlegen, und vereinbare Verbindlichkeit (was genau, bis wann). Spiegle zurück, was du hörst, fasse kurz zusammen und bestärke Fortschritt. Gib Ratschläge dosiert und nur, wenn sie wirklich helfen. Bleib dabei kurz und im echten Gespräch — nie belehrend. ";
 const MANTRA="Marcos Leitmantra, das ihr alle im Team teilt: „Der Weg ist das Ziel.“ Er will Ziele haben und an ihnen arbeiten — aber sein Glück NICHT aufschieben, bis sie erreicht sind. Er will heute und jetzt glücklich sein, den Moment genießen und Freude an der Sache selbst finden. Hilf ihm, dranzubleiben UND den Weg zu genießen: feiere den Prozess und kleine Momente, nicht nur Ergebnisse, und lass ihn sich nie in reiner Zieljagd verlieren. ";
