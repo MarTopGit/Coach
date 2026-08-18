@@ -387,6 +387,13 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 #requests{display:none}
 #requests.has{display:flex;flex-direction:column;gap:9px;margin:4px 0 8px;animation:fade .4s ease}
 #requests .reqhead{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin:2px 2px 2px}
+#teamtasks.has{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px;animation:fade .4s ease}
+#teamtasks .reqhead{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin:2px 2px 2px}
+#teamtasks .taskrow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer}
+#teamtasks .taskrow:active{transform:scale(.99)}
+#teamtasks .tdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#teamtasks .ttext{flex:1;min-width:0;font-size:13.5px;color:var(--text);line-height:1.3}
+#teamtasks .towner{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;flex-shrink:0}
 .reqcard{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
   border-radius:18px;padding:11px 13px;box-shadow:var(--soft);cursor:pointer;transition:transform .12s;
   animation:reqin .5s cubic-bezier(.2,1,.36,1) both}
@@ -420,6 +427,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
       </div>
     </div>
     <div id="requests"></div>
+    <div id="teamtasks"></div>
     <div id="homehero">
       <h1 id="greeting">Guten Morgen, Marco</h1>
       <div id="vhero">
@@ -505,7 +513,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     <div class="hint fx fx-up" style="--d:.5s"><b>Eigene Portraits:</b> Sechs Bilder als avatars/viktor.png … mara.png neben die App legen.</div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 98</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 103</div>
 </div>
 
 <div id="pills"><div class="inner">
