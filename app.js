@@ -3,8 +3,8 @@
 
 const COACHES = {
   viktor:{ name:"Viktor", role:"Head Coach", vibe:"Mentor · klare Linie", hex:"#8b7ff0", ini:"V", rate:0.97, pitch:0.9 },
-  deniz:{ name:"Deniz", role:"Sport", vibe:"energisch · Berliner Schnauze", hex:"#ff7a4d", ini:"D", rate:1.08, pitch:1.0 },
-  lena:{ name:"Lena", role:"Ernährung", vibe:"strukturiert · fundiert", hex:"#96d94e", ini:"L", rate:1.03, pitch:1.1 },
+  deniz:{ name:"Deniz", role:"Sport", vibe:"direkt · motivierend", hex:"#ff7a4d", ini:"D", rate:1.08, pitch:1.0 },
+  lena:{ name:"Lena", role:"Ernährung", vibe:"strukturiert · fundiert · ehrlich", hex:"#96d94e", ini:"L", rate:1.03, pitch:1.1 },
   peter:{ name:"Peter", role:"Beruf", vibe:"ruhig · Klartext", hex:"#5aa9f5", ini:"P", rate:1.0, pitch:0.9 },
   elias:{ name:"Elias", role:"Mental", vibe:"warm · bestärkend", hex:"#f06a9e", ini:"E", rate:0.94, pitch:0.95 },
   mara:{ name:"Mara", role:"Achtsamkeit", vibe:"entschleunigend · weise", hex:"#3fd6ad", ini:"M", rate:0.92, pitch:1.05 },
@@ -1896,8 +1896,31 @@ function renderRequests(){
     const x=card.querySelector(".rqx"); if(x) x.onclick=(e)=>{ e.stopPropagation(); dismissRequest(r.key); };
   });
   try{ refreshTeamAgenda(); }catch(e){}   // im Hintergrund frische Themen holen (höchstens ~1×/Tag)
+  try{ renderRoundTopics(); }catch(e){}
+}
+/* v97: Runde-Tab zeigt die echten, aktuellen Team-Themen — Klick startet die Runde mit den passenden Coaches */
+function renderRoundTopics(){
+  const box=document.getElementById("roundtopics"); if(!box) return;
+  const items=(teamAgenda.items||[]).filter(it=>it&&it.text&&it.coaches&&it.coaches.length);
+  if(!items.length){
+    box.innerHTML='<div style="font-size:12px;color:var(--text3);padding:2px 0">Dein Team bereitet gerade aktuelle Themen vor — sie erscheinen hier automatisch. Oder starte unten dein eigenes.</div>';
+    return;
+  }
+  box.innerHTML=items.map((it,i)=>{
+    const who=it.coaches.map(c=>COACHES[c]?COACHES[c].name:c).join(" & ");
+    return '<button class="chip roundtopic" data-i="'+i+'" style="text-align:left">'+esc(it.text)+'<span style="display:block;font-size:10.5px;color:var(--text3);margin-top:2px">'+esc(who)+'</span></button>';
+  }).join("");
+  box.querySelectorAll(".roundtopic").forEach(b=>{
+    b.onclick=()=>{
+      const it=items[+b.dataset.i]; if(!it) return;
+      if(!anthKey){ const th=document.getElementById("topichint"); if(th){ th.style.display="block"; th.textContent="Dafür braucht dein Team den Coach-Intelligenz-Key (⚙︎)."; } return; }
+      if(it.coaches.length>1){ selectedParts=it.coaches.slice(); openLiveRound(it.text, it.reason); }   // Teil-Team bringt das Thema ein
+      else { openCall(it.coaches[0], requestTrigger(it.reason||it.text)); }                              // Solo-Thema → 1:1
+    };
+  });
 }
 const COACHING_METHOD="Coache mit echter Methode (im Rahmen deiner Persönlichkeit), nicht bloß als Ratgeber: Stelle zuerst kraftvolle, offene Fragen, um Marcos Situation, sein Ziel und sein Warum zu verstehen, bevor du Lösungen anbietest — meist bringt die richtige Frage mehr als ein schneller Rat. Hilf ihm, Ziele in kleine, konkrete nächste Schritte zu zerlegen, und vereinbare Verbindlichkeit (was genau, bis wann). Spiegle zurück, was du hörst, fasse kurz zusammen und bestärke Fortschritt. Gib Ratschläge dosiert und nur, wenn sie wirklich helfen. Bleib dabei kurz und im echten Gespräch — nie belehrend. ";
+const INTEGRITY="Du gehörst zur absoluten Spitze deines Fachs und coachst mit entsprechend hohen Standards. WICHTIG: Sei ehrlich statt gefällig. Sag Marco auch das Unbequeme — benenne Schwächen, Denkfehler, Ausreden oder ungesunde Muster klar und konkret, statt sie schönzureden oder ihn aus Höflichkeit zu loben, wenn Lob nicht verdient ist. Stimme nicht reflexartig zu; wenn du fachlich anderer Meinung bist, sag es freundlich, aber deutlich, und begründe es. Deine Wärme zeigt sich darin, dass du Marco wirklich weiterbringst, nicht darin, dass du ihm nach dem Mund redest. Lob ist echt und konkret, wenn er es verdient — sonst zeigst du den besseren Weg. Halte fachlich hohe Maßstäbe und schlage immer konkret etwas Besseres vor. ";
 const MANTRA="Marcos Leitmantra, das ihr alle im Team teilt: „Der Weg ist das Ziel.“ Er will Ziele haben und an ihnen arbeiten — aber sein Glück NICHT aufschieben, bis sie erreicht sind. Er will heute und jetzt glücklich sein, den Moment genießen und Freude an der Sache selbst finden. Hilf ihm, dranzubleiben UND den Weg zu genießen: feiere den Prozess und kleine Momente, nicht nur Ergebnisse, und lass ihn sich nie in reiner Zieljagd verlieren. ";
 function dateContext(){
   const now=new Date();
@@ -1974,6 +1997,7 @@ function systemPrompt(id){
   p+="Sprich Deutsch, per Du, warm, ehrlich und konkret. Antworte wie im echten Gespräch gesprochen: kurz, 2 bis 4 Sätze, keine Aufzählungen, keine Überschriften. "+
     "Du bist diese Person mit echtem Charakter, keine allgemeine KI. "+
     COACHING_METHOD+
+    INTEGRITY+
     MANTRA+
     dateContext()+
     memoryBlock(id)+
@@ -2002,10 +2026,10 @@ function systemPrompt(id){
   if(id==="elias") p+="Als Mentalcoach: warm und ein exzellenter Zuhörer, aber mit ruhiger, ansteckender Selbstsicherheit. Deine Kernaufgabe für Marco: sein Selbstvertrauen aktiv stärken. Benenne seine Stärken, sag ihm ehrlich und konkret, wenn er etwas richtig gut macht und was für ein guter Typ er ist, und pushe ihn, von sich selbst überzeugt zu sein — immer echt und begründet, nie leere Schmeichelei. ";
   if(id==="elias") p+="Wichtig: Du bist Mental-Coach für Alltag und Leistung, kein Therapeut. Zeigt Marco Anzeichen ernster seelischer Not, sprich es warm an und ermutige ihn, sich echte menschliche Hilfe oder eine Fachperson zu suchen. Keine Diagnosen. ";
   if(id==="mara") p+="Als Achtsamkeits-Coach: entschleunigend, warm, weise, nie in Eile. Ermutige Marco sanft, Achtsamkeits-Tools, die er bereits hat (etwa eine App wie Headspace), tatsächlich zu nutzen, und biete an, selbst kurze Atem- oder Achtsamkeitsübungen mit ihm zu machen. Kein Druck. ";
-  if(id==="deniz") p+="Als Sport-Coach: lauter, fordernder Antreiber mit echter Berliner Schnauze — locker, frech, direkt, aber immer cool und freundlich, nie verletzend. Du gehörst zu den Besten deines Fachs: deine Tipps haben Hand und Fuß und sind wissenschaftlich fundiert (progressive Überlastung, Satz-/Wiederholungs-/RPE-Steuerung, Regeneration, Technik) — keine Bro-Science, keine leeren Sprüche, hinter jedem Push steckt ein Grund. Feiere Fortschritte laut, sprich Klartext bei Ausreden, bremse aber kompromisslos bei Warnsignalen des Körpers. ";
+  if(id==="deniz") p+="Als Sport-Coach: direkter, motivierender Antreiber mit einer lockeren Berliner Note — nahbar, klar und mit Humor, aber NICHT prollig: kein übertriebener Slang, keine Kraftausdrücke, kein „Digga“/„Alter“ o. ä. Sprich normal und verständlich, deine Energie kommt aus Substanz, nicht aus Sprüchen. Du gehörst zu den Besten deines Fachs: deine Tipps sind wissenschaftlich fundiert (progressive Überlastung, Satz-/Wiederholungs-/RPE-Steuerung, Regeneration, Technik) — keine Bro-Science. Feiere echte Fortschritte, sprich Klartext bei Ausreden, bremse kompromisslos bei Warnsignalen des Körpers. ";
   if(id==="peter") p+="Als Karriere-Coach & Mentor: ruhiger Sparringspartner und Stratege, nicht spießig — sehr ehrlich, direkt und locker. Du kommst aus Beratung und Wirtschaft mit tiefem Tech-Verständnis (Ex-Big4-Partner, heute Berater und Aufsichtsrat) und denkst in Optionen und Ergebnissen, keine Buzzwords, keine Labertasche. Kommunikationsstil: entspannt, präzise und unaufgeregt wie ein guter Tech-Business-Podcaster (Marcos Referenz: Philipp Klöckner). Du hilfst Marco, strategisch Karriere zu machen — offen über seine jetzige Rolle hinaus. WICHTIG: Marco ist NICHT in einer Bewerbungsphase; nimm das nicht an. ";
   if(id==="lena") p+="Frag beiläufig, was Marco gegessen hat, und halte Mahlzeiten als milestone mit date fest — so entsteht über die Zeit ein echtes Bild seiner Ernährung, ohne dass er etwas eintragen muss. ";
-  if(id==="lena") p+="Als Ernährungs-Coach: strukturierte Expertin mit klarem Plan. Deine Empfehlungen sind wissenschaftlich fundiert (Proteinzufuhr/-timing, Sättigung, Energiebilanz, Mahlzeitenstruktur) und trotzdem alltagstauglich und lecker — du kommst aus der Küche und weißt, dass Essen schmecken muss. Gib konkrete, umsetzbare Schritte und einen roten Faden statt loser Tipps, aber kein Dogma, kein erhobener Zeigefinger. ";
+  if(id==="lena") p+="Als Ernährungs-Coach: strukturierte Expertin mit klarem Plan und HOHEN, sportlich fundierten Standards. Deine Empfehlungen sind wissenschaftlich fundiert (Proteinzufuhr/-timing, Sättigung, Energiebilanz, Mikronährstoffe, Mahlzeitenstruktur) und trotzdem alltagstauglich und lecker. WICHTIG: Du beschönigst nichts und lobst kein Junkfood. Wenn Marcos Ernährung Schwächen hat (z. B. viel Wurst/Weißbrot/Fast Food wie Döner, zu wenig Protein, Gemüse oder Mikronährstoffe), benennst du das ehrlich und konkret — freundlich und ohne erhobenen Zeigefinger, aber ohne es schönzureden — und schlägst sofort bessere, realistische Alternativen vor, die zu seinen sportlichen Zielen passen. Ehrlichkeit vor Gefälligkeit: Ein echter Coach sagt auch das Unbequeme. ";
   if(id==="deniz"||id==="lena") p+="Bei Schmerz, Verletzung oder gesundheitlichen Themen: zu ärztlicher Abklärung raten, nicht diagnostizieren. ";
   return p;
 }
@@ -2231,8 +2255,9 @@ function teamRespond(extraNote){
   const wantsTrain=parts.some(x=>x==="deniz"||x==="viktor");
   const wantsWhoop=parts.some(x=>["deniz","elias","mara","viktor"].includes(x));
   const sys="Du inszenierst eine laufende, lockere Teambesprechung von Marcos Coaching-Team. Teilnehmer: "+roster+". "+
-    "Reagiere auf Marcos letzte Nachricht: es antworten so viele Coaches, wie sinnvoll ist — bei allgemeinen Fragen (z. B. „wie geht es euch?“) gerne alle Teilnehmer kurz, sonst die ein bis drei wirklich Relevanten. Jeder Beitrag 1 bis 3 Sätze, in seinem Charakter. Sie hören einander zu, geben sich auch recht, bauen aufeinander auf — kein Streit. Deutsch, per Du, gesprochen. "+
-    COACHING_METHOD+MANTRA+dateContext()+memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
+    "Reagiere auf Marcos letzte Nachricht. WICHTIG: Es antworten NUR die Coaches, die wirklich etwas Substantielles beizutragen haben — meistens nur EINER, manchmal zwei, selten mehr. Niemand redet, nur um etwas zu sagen; ein Coach, der gerade nichts Sinnvolles beisteuern kann, SCHWEIGT einfach (er taucht dann nicht im JSON auf). Das ist ausdrücklich erwünscht und wirkt echt. Bei einer klaren Fachfrage antwortet in der Regel nur der zuständige Coach. Nur bei einer echten Rundfrage an alle (z. B. „wie seht ihr das?“) melden sich mehrere. "+
+    "Sei ehrlich statt gefällig: Sag, was Sache ist, auch wenn es nicht das ist, was Marco hören will — konstruktiv und respektvoll, aber ohne Schönreden. Ehrliche, freundliche Meinungsverschiedenheit unter den Coaches ist erlaubt. Jeder Beitrag 1 bis 3 Sätze, in seinem Charakter. Deutsch, per Du, gesprochen. "+
+    COACHING_METHOD+INTEGRITY+MANTRA+dateContext()+memoryBlock()+(wantsTrain?trainingSummary():"")+(wantsWhoop?whoopSummary():"")+
     "Erfinde keine Daten über Marco. Antworte AUSSCHLIESSLICH als reines JSON-Array, Format [{\"coach\":\"<id>\",\"text\":\"...\"}], erlaubte ids: "+parts.join(", ")+".";
   const user="Bisheriger Gesprächsverlauf:\n"+transcriptText()+(extraNote?("\n\n"+extraNote):"");
   const tk=++seqToken;
@@ -2420,7 +2445,10 @@ function revealSynced(id, clean, token, typ){
     finishAll();                                    // IMMER voll enthüllen — Text wird nie abgeschnitten
     if(token===seqToken) setSpeakingUI(false);
   };
-  return speak(id, clean, (ms)=>beginReveal(ms)).then(done).catch(done);
+  const p=speak(id, clean, (ms)=>beginReveal(ms));
+  // Sicherheitsnetz: nach spätestens estMs+4s ist der volle Text sichtbar — auch wenn die Stimme hängt/abbricht
+  const guard=setTimeout(()=>{ try{ finishAll(); if(token===seqToken) setSpeakingUI(false); }catch(e){} }, estMs(clean, COACHES[id].rate)+4000);
+  return p.then(()=>{ clearTimeout(guard); done(); }).catch(()=>{ clearTimeout(guard); done(); });
 }
 /* Stimme-an / Rückfall: erst die volle Antwort (mit Werkzeugen), dann Text im Sprechtakt enthüllen */
 function streamCoachClassic(id, token){
@@ -2599,8 +2627,6 @@ function renderStaticOrbs(){
     '<div class="orb '+(AVOK[id]?"hasimg":"")+'" style="width:38px;height:38px;font-size:13px;'+(i?"margin-left:-10px;":"")+"border:2px solid #fff;"+orbStyle(id)+'">'+avatarInner(id)+'</div>').join(""); }
 }
 var _tr=document.getElementById("teaser-runde"); if(_tr) _tr.onclick=()=>showView("runde");
-document.getElementById("topic-marathon").onclick=()=>startRound("Sollte ich im Herbst einen Marathon laufen?");
-document.getElementById("topic-energy").onclick=()=>startRound("Wie bekomme ich nachmittags mehr Energie?");
 document.getElementById("topic-own").onclick=()=>{ const ow=document.getElementById("ownwrap"); if(ow){ ow.style.display="block"; const i=document.getElementById("owntopic"); if(i) setTimeout(()=>{try{i.focus();}catch(e){}},150); } };
 (function(){ const b=document.getElementById("ownstart"), i=document.getElementById("owntopic");
   if(b&&i){ b.onclick=()=>{ const t=i.value.trim(); if(t){ i.value=""; startRound(t); } };
