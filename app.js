@@ -1139,6 +1139,7 @@ async function syncMemoryFromDB(){
   await syncWhoopFromDB();
   await pullSettingsFromDB();          // API-Keys ans Konto gebunden → nach Login automatisch zurück
   await pullTeamBrain();               // v96: Server-Team-Hirn — vorbereitete Agenda + Team-Notizen holen
+  await pullServerUsage();             // v104: Team-Hirn-Kosten (Server) holen
   try{ if("Notification" in window && Notification.permission==="granted" && typeof enablePush==="function") enablePush(); }catch(e){}  // Push still reaktivieren
   try{ maybeQueueBriefing(); }catch(e){}   // v94: tägliches Morgen-Briefing für morgen einplanen, falls aktiv
 }
@@ -1470,13 +1471,57 @@ function renderPicker(){
   });
   selectedParts=ORDER.slice();
 }
+/* v104: Kosten-Meter — echter Token-Verbrauch je Antwort × aktuelle Preise (Schätzung, nicht die offizielle Rechnung) */
+const PRICES={ in:2.00, out:10.00, cw:2.50, cr:0.20 };   // USD je 1 Mio. Token — Sonnet 5, Stand 08/2026; leicht änderbar
+function costOf(t){ return (((t&&t.in)||0)*PRICES.in + ((t&&t.out)||0)*PRICES.out + ((t&&t.cw)||0)*PRICES.cw + ((t&&t.cr)||0)*PRICES.cr)/1e6; }
+let usageStats={ total:{in:0,out:0,cw:0,cr:0}, days:{} };
+try{ const u=JSON.parse(store.get("usageStats")||"null"); if(u&&u.total&&u.days) usageStats=u; }catch(e){}
+let serverUsage={ total:{in:0,out:0,cw:0,cr:0}, days:{} };
+function recordUsage(u){
+  if(!u) return;
+  const t={ in:u.input_tokens||0, out:u.output_tokens||0, cw:u.cache_creation_input_tokens||0, cr:u.cache_read_input_tokens||0 };
+  if(!(t.in||t.out||t.cw||t.cr)) return;
+  const day=new Date().toISOString().slice(0,10);
+  const d=usageStats.days[day]||(usageStats.days[day]={in:0,out:0,cw:0,cr:0});
+  ["in","out","cw","cr"].forEach(k=>{ d[k]+=t[k]; usageStats.total[k]+=t[k]; });
+  try{ store.set("usageStats", JSON.stringify(usageStats)); }catch(e){}
+  try{ renderCostView(); }catch(e){}
+}
+async function pullServerUsage(){   // Team-Hirn-Verbrauch (Server) aus Supabase holen
+  if(typeof sbUser==="undefined" || !sbUser || !sbToken) return;
+  const q="/rest/v1/usage_log?user_id=eq."+sbUserId+"&select=day,in_tokens,out_tokens,cw_tokens,cr_tokens";
+  try{
+    let r=await fetch(SB_URL+q, { headers:sbHeaders() });
+    if(r.status===401 && await sbTryRefresh()){ r=await fetch(SB_URL+q, { headers:sbHeaders() }); }
+    if(!r.ok) return; const rows=await r.json();
+    const su={ total:{in:0,out:0,cw:0,cr:0}, days:{} };
+    (rows||[]).forEach(x=>{ const day=String(x.day).slice(0,10); const d=su.days[day]||(su.days[day]={in:0,out:0,cw:0,cr:0});
+      const t={ in:x.in_tokens||0, out:x.out_tokens||0, cw:x.cw_tokens||0, cr:x.cr_tokens||0 };
+      ["in","out","cw","cr"].forEach(k=>{ d[k]+=t[k]; su.total[k]+=t[k]; }); });
+    serverUsage=su; try{ renderCostView(); }catch(e){}
+  }catch(e){}
+}
+function sumUsage(stats, pred){ const a={in:0,out:0,cw:0,cr:0}; Object.keys(stats.days||{}).forEach(day=>{ if(pred(day)){ const d=stats.days[day]; ["in","out","cw","cr"].forEach(k=>a[k]+=d[k]); } }); return a; }
+function renderCostView(){
+  const box=document.getElementById("costview"); if(!box) return;
+  const today=new Date().toISOString().slice(0,10), month=today.slice(0,7);
+  const isT=d=>d===today, isM=d=>d.slice(0,7)===month;
+  const fmt=c=>"$"+(c<0.01?c.toFixed(4):c.toFixed(2));
+  const row=(label,a,s)=>'<div class="costrow"><span>'+label+'</span><b>'+fmt(costOf(a)+costOf(s))+'</b></div>';
+  box.innerHTML=
+    row("Heute", sumUsage(usageStats,isT), sumUsage(serverUsage,isT))+
+    row("Diesen Monat", sumUsage(usageStats,isM), sumUsage(serverUsage,isM))+
+    row("Gesamt", usageStats.total, serverUsage.total)+
+    '<div class="costsub">Aufteilung gesamt: Gespräche (App) '+fmt(costOf(usageStats.total))+' · Team-Hirn (Server) '+fmt(costOf(serverUsage.total))+'</div>'+
+    '<div class="costsub">Geschätzt auf Basis Sonnet-5-Preise ($2 / $10 pro Mio. Token). Verbindlich ist die Anthropic-Console. Die Stimme (ElevenLabs) wird separat abgerechnet.</div>';
+}
 function claudeRaw(system, messages, maxTokens){
   return fetch("https://api.anthropic.com/v1/messages",{
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":anthKey, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
     body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:maxTokens||1000, system:[{ type:"text", text:system, cache_control:{ type:"ephemeral" } }], messages:messages })
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
-    .then(d=>((d.content||[]).filter(x=>x.type==="text").map(x=>x.text).join(" ")).trim());
+    .then(d=>{ recordUsage(d.usage); return ((d.content||[]).filter(x=>x.type==="text").map(x=>x.text).join(" ")).trim(); });
 }
 function openLiveRound(topic, proactiveReason){
   topic=(topic||"").trim(); if(!topic) return;
@@ -2329,7 +2374,7 @@ function askClaude(id, history, key){
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
     body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:900, system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }], messages:history })
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
-    .then(d=>{ const parts=(d.content||[]).filter(x=>x.type==="text").map(x=>x.text); return (parts.join(" ")||"…").trim(); });
+    .then(d=>{ recordUsage(d.usage); const parts=(d.content||[]).filter(x=>x.type==="text").map(x=>x.text); return (parts.join(" ")||"…").trim(); });
 }
 /* v30: nur den sichtbaren Teil zeigen — angefangene/fertige <remember>-Tags nie einblenden */
 function visiblePart(raw){
@@ -2354,6 +2399,7 @@ async function streamClaude(id, history, onDelta){
   if(!resp.body || !resp.body.getReader) throw new Error("no-stream");
   const reader=resp.body.getReader(), dec=new TextDecoder();
   let buf="", full="", completed=false, stopReason=null;
+  let uIn=0,uOut=0,uCw=0,uCr=0;   // Verbrauch aus dem Stream
   const blocks={};   // index -> { type, text, name, id, jsonBuf }
   while(true){
     const { done, value }=await reader.read();
@@ -2366,6 +2412,7 @@ async function streamClaude(id, history, onDelta){
       const data=line.slice(5).trim();
       if(!data || data==="[DONE]") continue;
       try{ const ev=JSON.parse(data);
+        if(ev.type==="message_start" && ev.message && ev.message.usage){ const mu=ev.message.usage; uIn=mu.input_tokens||0; uCw=mu.cache_creation_input_tokens||0; uCr=mu.cache_read_input_tokens||0; uOut=mu.output_tokens||0; }
         if(ev.type==="content_block_start" && ev.content_block){
           const cb=ev.content_block;
           blocks[ev.index]={ type:cb.type, text:"", name:cb.name, id:cb.id, jsonBuf:"" };
@@ -2379,12 +2426,13 @@ async function streamClaude(id, history, onDelta){
           const b=blocks[ev.index];
           if(b && b.type==="tool_use"){ try{ b.input=JSON.parse(b.jsonBuf||"{}"); }catch(e){ b.input={}; } }
         }
-        else if(ev.type==="message_delta" && ev.delta && ev.delta.stop_reason){ completed=true; stopReason=ev.delta.stop_reason; }
+        else if(ev.type==="message_delta"){ if(ev.usage && ev.usage.output_tokens!=null) uOut=ev.usage.output_tokens; if(ev.delta && ev.delta.stop_reason){ completed=true; stopReason=ev.delta.stop_reason; } }
         else if(ev.type==="message_stop"){ completed=true; }
       }catch(e){}
     }
   }
   if(!completed) throw new Error("stream-incomplete");   // abgerissen → oben wird die Antwort komplett nachgeholt
+  recordUsage({ input_tokens:uIn, output_tokens:uOut, cache_creation_input_tokens:uCw, cache_read_input_tokens:uCr });
   const ordered=Object.keys(blocks).map(Number).sort((a,b)=>a-b).map(i=>blocks[i]);
   const rawContent=ordered.map(b=> b.type==="tool_use"
     ? { type:"tool_use", id:b.id, name:b.name, input:b.input||{} }
@@ -2405,7 +2453,7 @@ async function claudeToolsCall(id, history){
     body:JSON.stringify(body)
   });
   if(!r.ok){ const t=await r.text(); throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }
-  return await r.json();
+  const j=await r.json(); recordUsage(j.usage); return j;
 }
 async function askClaudeTools(id, history){
   let work=history.slice(), iter=0, text="";
@@ -2934,7 +2982,11 @@ function elStatus(){
 document.getElementById("settingsbtn").onclick=()=>{
   document.getElementById("elkeyinput").value=elKey;
   elStatus(); settingsEl.style.display="flex";
+  try{ renderCostView(); pullServerUsage(); }catch(e){}   // v104: Kosten aktuell zeigen + Server-Verbrauch nachladen
 };
+(function(){ const cr=document.getElementById("costreset");
+  if(cr) cr.onclick=()=>{ if(!confirm("App-Kostenzähler zurücksetzen? (Der Team-Hirn/Server-Teil bleibt.)")) return;
+    usageStats={ total:{in:0,out:0,cw:0,cr:0}, days:{} }; try{ store.set("usageStats", JSON.stringify(usageStats)); }catch(e){} renderCostView(); }; })();
 document.getElementById("elsave").onclick=()=>{
   elKey=document.getElementById("elkeyinput").value.trim();
   store.set("elKey",elKey); elFail=false; audioCache.clear();
