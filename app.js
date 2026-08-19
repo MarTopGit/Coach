@@ -875,18 +875,9 @@ function renderDay(){
     if(ts) ts.textContent="Deine Gym-App — noch keine Trainings.";
     if(tc){ tc.style.cursor="default"; tc.onclick=null; }
   }
-  const tl=document.getElementById("tagtl");
-  if(tl) tl.innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0 2px">Noch kein Kalender verbunden.</div>';
 }
 
-/* ===== Log & Feed ===== */
-const ACTIONS=[
-  { ico:"🏋️", t:"Deniz · Zielgewichte in der Trainings-App angepasst (Technik-Tag)", time:"heute 08:12 · autonom · widerrufbar" },
-  { ico:"📅", t:"Deniz · Kalendereintrag „Beine (Technik)“ 12:30 vorgeschlagen", time:"heute 08:12 · wartet auf ✓" },
-  { ico:"🧠", t:"Elias · Check-in ausgelöst (Schlaf < 6 h, HRV ↓)", time:"heute 07:58 · Regel „Fürsorge“" },
-  { ico:"🥗", t:"Lena · Speiseplan an Trainingszeit angepasst", time:"heute 07:55 · autonom" },
-  { ico:"🤝", t:"Viktor & Mara · Team-Runde „Belastung nächste Woche“ gestartet", time:"gestern 21:40" },
-];
+/* ===== Verlauf (Logbuch) ===== */
 function fmtWhen(iso){
   const d=new Date(iso), now=new Date();
   const hh=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
@@ -906,15 +897,6 @@ function renderLog(){
     return '<div class="logrow"><div class="lr-ico" style="background:'+c.hex+'22;color:'+c.hex+';font-weight:700;font-size:12px">'+c.ini+'</div>'+
       '<div style="flex:1">'+esc(e.t)+'<div class="lr-t">'+c.name+' · '+fmtWhen(e.d)+'</div></div></div>';
   }).join("");
-}
-function feedItem(coachId,title,body,time,target){
-  const c=COACHES[coachId];
-  const n=el(`<div class="feed-item">
-    <div class="orb" style="${orbStyle(coachId)}">${avatarInner(coachId)}</div>
-    <div style="flex:1"><div class="fi-t">${c.name} · ${title}</div><div class="fi-b">${body}</div><div class="fi-time">${time}</div></div>
-    <div style="color:var(--text3)">›</div></div>`);
-  n.onclick=()=>openCall(target||coachId);
-  document.getElementById("tagfeed").prepend(n);
 }
 function ping(coachId,title,body,target){
   const c=COACHES[coachId];
@@ -2326,28 +2308,33 @@ async function teamRespond(extraNote){
   const log=document.getElementById("transcript"); if(!log) return;
   const tk=++seqToken;
   const round=[];   // Beiträge dieser Runde, in Reihenfolge
-  // Reihenfolge: der zuletzt angesprochene/relevante zuerst? Wir nehmen die Teilnehmer-Reihenfolge, Viktor moderiert zuletzt wenn dabei.
-  const order=parts.slice().sort((a,b)=> (a==="viktor"?1:0)-(b==="viktor"?1:0));
-  for(const cid of order){
-    if(tk!==seqToken){ return; }
-    const typ=el('<div class="tsys">'+COACHES[cid].name+' überlegt …</div>'); log.appendChild(typ); log.scrollTop=log.scrollHeight;
+  const order=parts.slice().sort((a,b)=> (a==="viktor"?1:0)-(b==="viktor"?1:0));   // Viktor moderiert zuletzt, wenn dabei
+  // Antwort eines Coaches generieren (sieht den bisherigen round-Stand); "" = PASS/schweigt
+  const genFor=async (cid)=>{
     const convo="Bisheriges Gespräch"+(round.length?" (inkl. was Kolleg:innen gerade in dieser Runde gesagt haben)":"")+":\n"+
       transcriptText()+(round.length?("\n"+round.map(r=>COACHES[r.coach].name+": "+r.text).join("\n")):"")+(extraNote?("\n\n"+extraNote):"")+
       "\n\nDu bist "+COACHES[cid].name+". Hast du jetzt etwas Substantielles beizutragen? Wenn nein: nur PASS.";
     let reply="";
     try{ reply=await claudeRaw(teamCoachSys(cid, parts, extraNote), [{ role:"user", content:convo }], 280); }catch(e){}
-    try{ typ.remove(); }catch(e){}
-    if(tk!==seqToken){ return; }
     reply=processReply(reply||"").clean.replace(new RegExp("^\\s*"+COACHES[cid].name+"\\s*:\\s*","i"),"").trim();
-    if(!reply || /^\s*pass[\s.!]*$/i.test(reply)) continue;   // dieser Coach schweigt
-    round.push({ coach:cid, text:reply });
-    sharedLog.push({ who:cid, text:reply });
-    await new Promise(res=>{                                        // sofort sprechen/enthüllen, dann kommt der Nächste
-      let fired=false; const fin=()=>{ if(!fired){ fired=true; res(); } };
-      const guard=setTimeout(fin, estMs(reply, COACHES[cid].rate)+6000);   // Sicherung, falls die Runde unterbrochen wird
-      runSequence([[cid, reply]], ()=>{ clearTimeout(guard); fin(); }, tk);
-    });
-    if(tk!==seqToken){ return; }
+    return (!reply || /^\s*pass[\s.!]*$/i.test(reply)) ? "" : reply;
+  };
+  const speakTurn=(cid, reply)=> new Promise(res=>{
+    let fired=false; const fin=()=>{ if(!fired){ fired=true; res(); } };
+    const guard=setTimeout(fin, estMs(reply, COACHES[cid].rate)+6000);   // Sicherung, falls die Runde unterbrochen wird
+    runSequence([[cid, reply]], ()=>{ clearTimeout(guard); fin(); }, tk);
+  });
+  const typ=el('<div class="tsys">Das Team überlegt …</div>'); log.appendChild(typ); log.scrollTop=log.scrollHeight;
+  let curr=await genFor(order[0]);        // erste Stimme
+  try{ typ.remove(); }catch(e){}
+  for(let i=0;i<order.length;i++){
+    if(tk!==seqToken) return;
+    const cid=order[i];
+    if(curr){ round.push({ coach:cid, text:curr }); sharedLog.push({ who:cid, text:curr }); }
+    // die NÄCHSTE Stimme schon jetzt vorbereiten (sieht round inkl. curr) — sie generiert, WÄHREND curr spricht
+    const nextP=(i+1<order.length) ? genFor(order[i+1]) : Promise.resolve("");
+    if(curr){ await speakTurn(cid, curr); if(tk!==seqToken) return; }
+    curr=await nextP;
   }
   if(!round.length && tk===seqToken){ addMsg("sys","(Das Team hört zu — frag ruhig direkt, was du brauchst.)"); }
 }
@@ -2535,7 +2522,7 @@ function revealSynced(id, clean, token, typ){
   return p.then(()=>{ clearTimeout(guard); done(); }).catch(()=>{ clearTimeout(guard); done(); });
 }
 /* Stimme-an / Rückfall: erst die volle Antwort (mit Werkzeugen), dann Text im Sprechtakt enthüllen */
-function streamCoachClassic(id, token){
+function streamCoachClassic(id, token, _retried){
   const log=document.getElementById("transcript");
   const typ=el('<div class="tsys">'+COACHES[id].name+' denkt nach …</div>');
   log.appendChild(typ); log.scrollTop=log.scrollHeight;
@@ -2544,7 +2531,9 @@ function streamCoachClassic(id, token){
     if(full===null || token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
     const pr=processReply(full); addItems(pr.items);
     const cleanTxt=(pr.clean||"").replace(/[…\.\s]/g,"");
-    if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(token===seqToken){ setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); } return; }
+    if(!cleanTxt){ try{ typ.remove(); }catch(e){}
+      if(token===seqToken && !_retried){ return streamCoachClassic(id, token, true); }   // leere Antwort → einmal automatisch nachfassen statt Sackgasse
+      if(token===seqToken){ setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); } return; }
     convHistory.push({ role:"assistant", content:pr.clean });
     sharedLog.push({ who:id, text:pr.clean });
     persistConv(id);                                        // v92: Gespräch dauerhaft sichern
@@ -2555,7 +2544,7 @@ function streamCoachClassic(id, token){
   }).catch(e=>{ try{ typ.remove(); }catch(_){} if(token===seqToken){ setSpeakingUI(false); addMsg("sys","⚠︎ "+anthErr(e)); } });
 }
 /* Stimme aus: Text erscheint live, während er entsteht (Werkzeuge inklusive) */
-function streamCoach(id, token){
+function streamCoach(id, token, _retried){
   const log=document.getElementById("transcript");
   if(!isTeam) addOldify();
   setSpeaker(id);
@@ -2577,7 +2566,9 @@ function streamCoach(id, token){
     if(full===null || token!==seqToken){ try{ typ.remove(); }catch(e){} return; }
     const pr=processReply(full); addItems(pr.items);
     const cleanTxt=(pr.clean||"").replace(/[…\.\s]/g,"");
-    if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(line){ try{ line.remove(); }catch(e){} } setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); return; }
+    if(!cleanTxt){ try{ typ.remove(); }catch(e){} if(line){ try{ line.remove(); }catch(e){} }
+      if(token===seqToken && !_retried){ return streamCoach(id, token, true); }   // leere Antwort → einmal automatisch nachfassen
+      setSpeakingUI(false); addMsg("sys","Da hat sich kurz was verhakt — frag ruhig nochmal."); return; }
     putClean(pr.clean);
     convHistory.push({ role:"assistant", content:pr.clean });
     sharedLog.push({ who:id, text:pr.clean });
@@ -2692,8 +2683,7 @@ function showView(v){
   document.querySelectorAll(".view").forEach(x=>x.classList.toggle("active",x.id==="view-"+v));
   document.querySelectorAll(".pillbtn").forEach(p=>p.classList.toggle("tabactive",p.dataset.v===v));
   window.scrollTo(0,0);
-  if(v==="tag") renderDay();
-  if(v==="home") renderRequests();
+  if(v==="home"){ renderRequests(); renderTeamTasks(); renderDay(); }
   runFX(v);
 }
 document.querySelectorAll(".pillbtn").forEach(p=>{ p.onclick=()=>showView(p.dataset.v); });
@@ -2718,7 +2708,6 @@ document.getElementById("topic-own").onclick=()=>{ const ow=document.getElementB
 document.getElementById("rundenarchiv").innerHTML='<div style="font-size:13px;color:var(--text3);padding:6px 0">Noch keine Runden — sie erscheinen hier, sobald dein Team welche haelt.</div>';
 
 renderOrbit(); renderDay(); renderLog(); renderStaticOrbs(); renderPicker(); renderCoachCards(); updateMemUI(); renderRequests(); renderTeamTasks();
-document.getElementById("tagfeed").innerHTML='<div style="font-size:13px;color:var(--text3)">Noch ruhig hier. Sobald dein Team dich kennt, meldet es sich von selbst.</div>';
 const _sb=document.getElementById("startbtn"); if(_sb) _sb.onclick=()=>openCall("viktor");
 (function(){
   const ow=document.getElementById("orbitwrap"); if(!ow) return;
