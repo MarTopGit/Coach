@@ -1918,8 +1918,9 @@ function renderRequests(){
   const box=document.getElementById("requests"); if(!box){ try{ refreshTeamAgenda(); }catch(e){} return; }
   const list=activeRequests();
   if(!list.length){ box.className=""; box.innerHTML=""; try{ refreshTeamAgenda(); }catch(e){} return; }
-  box.className="has";
-  box.innerHTML='<div class="reqhead">Anfragen deines Teams</div>'+list.map((r,i)=>{
+  const collapsed=store.get("reqCollapsed")==="1";
+  box.className="has"+(collapsed?" collapsed":"");
+  box.innerHTML='<div class="reqhead reqtog" role="button"><span>Anfragen deines Teams</span><span class="reqmeta"><span class="reqcount">'+list.length+'</span><span class="chev" aria-hidden="true">⌄</span></span></div><div class="reqcards">'+list.map((r,i)=>{
     const team=r.coaches && r.coaches.length>1;
     const lead=COACHES[team?r.coaches[0]:r.coach];
     const orbs = team
@@ -1932,7 +1933,9 @@ function renderRequests(){
       '<div class="rqbody"><div class="rqname" style="color:'+lead.hex+'">'+esc(name)+'</div>'+
       '<div class="rqtext">'+esc(r.text)+'</div>'+sub+'</div>'+
       '<button class="rqx" aria-label="Ausblenden">✕</button></div>';
-  }).join("");
+  }).join("")+'</div>';
+  const head=box.querySelector(".reqtog");
+  if(head) head.onclick=()=>{ const c=store.get("reqCollapsed")==="1"; store.set("reqCollapsed", c?"0":"1"); box.classList.toggle("collapsed", !c); };
   list.forEach(r=>{
     const card=box.querySelector('.reqcard[data-k="'+r.key+'"]'); if(!card) return;
     card.querySelectorAll(".rqorb").forEach(o=>{ try{ orbBg(o, o.dataset.c||r.coach); }catch(e){} });

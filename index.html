@@ -388,6 +388,13 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
 #requests{display:none}
 #requests.has{display:flex;flex-direction:column;gap:9px;margin:4px 0 8px;animation:fade .4s ease}
 #requests .reqhead{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin:2px 2px 2px}
+#requests .reqtog{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;margin:2px 2px}
+#requests .reqmeta{display:flex;align-items:center;gap:8px}
+#requests .reqcount{font-size:11px;font-weight:700;color:var(--text3);background:rgba(0,0,0,.05);border-radius:99px;padding:1px 8px;min-width:20px;text-align:center}
+#requests .chev{font-size:15px;line-height:1;color:var(--text3);transition:transform .2s;display:inline-block}
+#requests.collapsed .chev{transform:rotate(-90deg)}
+#requests .reqcards{display:flex;flex-direction:column;gap:9px}
+#requests.collapsed .reqcards{display:none}
 #teamtasks.has{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px;animation:fade .4s ease}
 #teamtasks .reqhead{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text3);font-weight:700;margin:2px 2px 2px}
 #teamtasks .taskrow{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer}
@@ -431,20 +438,6 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
         <div class="vtoggle" id="settingsbtn" role="button" aria-label="Stimmen-Einstellungen">⚙︎</div>
       </div>
     </div>
-    <div id="requests"></div>
-    <div id="teamtasks"></div>
-    <div class="metrics" style="margin:2px 0 12px">
-      <div class="metric" id="m-whoop" style="cursor:default">
-        <div class="mlabel">Whoop</div>
-        <div class="mval" id="whoop-val" style="color:var(--text3)">—</div>
-        <div class="msub" id="whoop-sub">Recovery, Schlaf, HRV.</div>
-      </div>
-      <div class="metric" id="m-train" style="cursor:default">
-        <div class="mlabel">Training</div>
-        <div class="mval" id="train-val" style="color:var(--text3)">—</div>
-        <div class="msub" id="train-sub">Deine Gym-App.</div>
-      </div>
-    </div>
     <div id="homehero">
       <h1 id="greeting">Guten Morgen, Marco</h1>
       <div id="vhero">
@@ -461,6 +454,8 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
       </div>
       <div id="frontname"></div>
     </div>
+    <div id="requests"></div>
+    <div id="teamtasks"></div>
     <div id="memcount" style="display:none">0 gemerkt</div>
   </div>
 
@@ -505,7 +500,7 @@ h2{font-size:11px;font-weight:600;color:var(--text3);letter-spacing:.2em;text-tr
     </div>
   </div>
 
-  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 107</div>
+  <div class="quiet">🌙 Ruhezeit 22:00 – 6:30 · Version 108</div>
 </div>
 
 <div id="pills"><div class="inner">
