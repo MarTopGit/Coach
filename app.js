@@ -2304,6 +2304,7 @@ function teamCoachSys(cid, parts, extraNote){
     "\n\nDU BIST GERADE IN EINER TEAMBESPRECHUNG mit: "+others+". Ihr sprecht zusammen mit Marco. "+
     "Trag nur bei, wenn du WIRKLICH etwas Substantielles zu sagen hast, das in dein Fach gehört — sonst antworte AUSSCHLIESSLICH mit dem Wort PASS (Schweigen ist okay und wirkt echt; nicht jeder muss bei allem etwas sagen). "+
     "Du hörst deinen Kolleg:innen zu: geh ruhig auf sie ein, stimme zu oder widersprich ehrlich und freundlich, wenn du fachlich anderer Meinung bist — kein künstlicher Konsens. "+
+    "AUSNAHME vom Schweigen: Wenn Marco dich direkt und namentlich anspricht oder ausdrücklich um deine Sicht bittet (oder ein:e Kolleg:in dich gerade dazugeholt hat), antworte auf jeden Fall substanziell und hilfreich — dann KEIN PASS. "+
     "In dieser Runde hast du KEINE Werkzeuge und gibst KEINE Regie-Hinweise oder <invite>-Tags aus. Antworte gesprochen, 1 bis 3 Sätze, in deinem Charakter — oder nur PASS.";
 }
 async function teamRespond(extraNote){
@@ -2318,9 +2319,11 @@ async function teamRespond(extraNote){
       transcriptText()+(round.length?("\n"+round.map(r=>COACHES[r.coach].name+": "+r.text).join("\n")):"")+(extraNote?("\n\n"+extraNote):"")+
       "\n\nDu bist "+COACHES[cid].name+". Hast du jetzt etwas Substantielles beizutragen? Wenn nein: nur PASS.";
     let reply="";
-    try{ reply=await claudeRaw(teamCoachSys(cid, parts, extraNote), [{ role:"user", content:convo }], 280); }catch(e){}
+    try{ reply=await claudeRaw(teamCoachSys(cid, parts, extraNote), [{ role:"user", content:convo }], 500); }catch(e){}
     reply=processReply(reply||"").clean.replace(new RegExp("^\\s*"+COACHES[cid].name+"\\s*:\\s*","i"),"").trim();
-    return (!reply || /^\s*pass[\s.!]*$/i.test(reply)) ? "" : reply;
+    // PASS, leer, oder eine Fast-Nichts-Antwort („…", „.", ein Wort) → dieser Coach schweigt, statt eine leere Blase zu zeigen
+    if(!reply || /^\s*pass[\s.!]*$/i.test(reply) || reply.replace(/[^a-zA-ZäöüÄÖÜß]/g,"").length<3) return "";
+    return reply;
   };
   const speakTurn=(cid, reply)=> new Promise(res=>{
     let fired=false; const fin=()=>{ if(!fired){ fired=true; res(); } };
@@ -2362,7 +2365,7 @@ function askClaude(id, history, key){
     method:"POST",
     headers:{ "content-type":"application/json", "x-api-key":key||anthKey,
       "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true" },
-    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:900, system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }], messages:history })
+    body:JSON.stringify({ model:"claude-sonnet-5", max_tokens:1200, system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }], messages:history })
   }).then(r=>{ if(!r.ok) return r.text().then(t=>{ throw new Error("HTTP "+r.status+" "+t.slice(0,140)); }); return r.json(); })
     .then(d=>{ recordUsage(d.usage); const parts=(d.content||[]).filter(x=>x.type==="text").map(x=>x.text); return (parts.join(" ")||"…").trim(); });
 }
@@ -2375,7 +2378,7 @@ function visiblePart(raw){
 }
 /* v30/v93: Streaming über die Anthropic-API (SSE) — streamt Text live UND erkennt Werkzeug-Aufrufe */
 async function streamClaude(id, history, onDelta){
-  const body={ model:"claude-sonnet-5", max_tokens:900,
+  const body={ model:"claude-sonnet-5", max_tokens:1200,
     system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }],
     messages:history, stream:true };
   const tls=toolsFor(id); if(tls && tls.length) body.tools=tls;
@@ -2432,7 +2435,7 @@ async function streamClaude(id, history, onDelta){
 }
 /* v93: nicht-streamende Werkzeug-Schleife (Rückfall für Umgebungen ohne Stream, z. B. iOS-Sonderfälle/Tests) */
 async function claudeToolsCall(id, history){
-  const body={ model:"claude-sonnet-5", max_tokens:900,
+  const body={ model:"claude-sonnet-5", max_tokens:1200,
     system:[{ type:"text", text:systemPrompt(id), cache_control:{ type:"ephemeral" } }],
     messages:history };
   const tls=toolsFor(id); if(tls && tls.length) body.tools=tls;
@@ -2465,8 +2468,10 @@ async function askClaudeTools(id, history){
 }
 /* v93: gemeinsame Antwort-Engine — streamt live, führt Werkzeuge aus, holt bei Abriss komplett nach */
 async function generateReply(id, token, onText, onTool){
-  let work=convHistory.slice(), iter=0, shown="", retried=0;
-  while(iter++<6){
+  let work=convHistory.slice(), iter=0, shown="", retried=0, cont=0;
+  // „wirkt abgeschnitten": endet nicht auf ein Satz-/Schlusszeichen → wahrscheinlich mittendrin gekappt
+  const seemsCut=(t)=>{ t=String(t||"").trim(); return t.length>0 && !/[.!?…"”»)\]:–—]$/.test(t.slice(-1)); };
+  while(iter++<9){
     let res;
     try{
       res=await streamClaude(id, work, onText?(t)=>onText(shown+t):null);
@@ -2485,7 +2490,14 @@ async function generateReply(id, token, onText, onTool){
       work.push({ role:"user", content:rs });
       continue;
     }
-    return shown+(res.text||"");
+    shown += (res.text||"");
+    // Antwort wirkt abgeschnitten? → Assistenten-Turn per Prefill fortsetzen lassen (repariert gekappte Antworten)
+    if(cont<2 && seemsCut(res.text) && res.stopReason!=="tool_use"){
+      cont++;
+      work.push({ role:"assistant", content:String(res.text||"") });
+      continue;
+    }
+    return shown;
   }
   return shown;
 }
